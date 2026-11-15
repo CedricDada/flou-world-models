@@ -199,13 +199,19 @@ Toutes les commandes se lancent **depuis la racine du dépôt** (le dossier qui 
 `uv run X` lance `X` dans l'environnement du projet, qu'il met à jour au besoin ; sans uv, remplacer `uv run scripts/…` par `python scripts/…`
 et `uv run pytest` par `python -m pytest` (§2).
 
+**Sous Windows, préfixer toutes ces commandes par `PYTHONUTF8=1`** (PowerShell : `$env:PYTHONUTF8=1` une fois par session). Sans cela,
+Python écrit sa sortie en `cp1252` et les scripts qui affichent des accents, `δ`, `ρ` ou les cadres du jeu plantent sur un
+`UnicodeEncodeError` (§3.8) : c'est vérifié pour `play.py`, `validate_instrument.py`, `validate_decision.py`, `human_review.py` et
+`pytest`. Les rapports JSON sont écrits **avant** l'affichage, donc une exécution qui plante ainsi n'a rien perdu — mais elle sort
+avec un code non nul, ce qui ressemble à tort à un contrôle échoué.
+
 | Étape | Avec `make` | Commande (sans `make`) | Où | Durée mesurée | Ce que ça produit |
 |---|---|---|---|---|---|
 | 3.1 Jouer | `make play` | `uv run scripts/play.py` | CPU | — | une partie dans le terminal |
 | 3.2 Tester | `make test` | `uv run pytest` | CPU | ≈ 3,5 min | 265 tests (1 ignoré sans Gymnasium) |
 | 3.3 Données | `make data` | voir 3.3 | CPU | 2 s | `data/p*/` : entraînement, validation, test |
 | 3.4 Instrument | `make validate` | `uv run scripts/validate_instrument.py` | CPU | 53 s | `reports/instrument.json` : ρmax et contrôle H0a |
-| 3.4 bis Extension « décision » | `make validate-decision` | `uv run scripts/validate_decision.py` | CPU | ≈ 5 min | `reports/decision_instrument.json` : contrôles H0e et H0f |
+| 3.4 bis Extension « décision » | `make validate-decision` | `uv run scripts/validate_decision.py` | CPU | 5 à 15 min | `reports/decision_instrument.json` : contrôles H0e et H0f |
 | 3.5 Répétition générale | `make dry-run` | `uv run scripts/dry_run.py` | CPU | ≈ 5 min | rapport **simulé** dans `reports/dryrun/` |
 | 3.6 Entraînement réel | `make smoke` puis voir 3.6 | `uv run scripts/smoke_test.py --time` | **GPU** | *non mesuré* | `runs/`, `reports/` |
 
@@ -259,7 +265,7 @@ pourquoi. Avec peu d'états de test l'échec peut être un faux négatif statist
 ### 3.4 bis Valider l'extension « décision » (sans GPU)
 
 ```bash
-uv run scripts/validate_decision.py                # ≈ 5 min ; --no-planner : quelques secondes
+uv run scripts/validate_decision.py                # 5 min (2 cœurs Linux) à 14 min (Windows 11, Python 3.12) ; --no-planner : quelques secondes
 ```
 
 Crée le jeu de test du niveau 1 (`data/p0.30/test_decision.npz`, 3 000 états), vérifie que le **lecteur de contact** retrouve
@@ -267,6 +273,9 @@ l'événement du jeu sur de vraies images (contrôle **H0e**), affiche l'erreur 
 jouer 50 parties à un **planificateur qui utilise le vrai jeu comme modèle** (contrôle **H0f**, d'après la référence « vrai simulateur »
 de PlaNet, arXiv:1811.04551, Table 1). Définitions, hypothèses H4 et H5 et articles qui les guident :
 [`docs/EXTENSION_DECISION.md`](docs/EXTENSION_DECISION.md).
+
+**Sous Windows, lancer `PYTHONUTF8=1 uv run scripts/validate_decision.py`** : sans ce réglage le script écrit bien son rapport, puis
+plante en l'affichant (`UnicodeEncodeError`, §3.8) et sort avec un code non nul, ce qui ressemble à tort à un contrôle échoué.
 
 ### 3.5 Répétition générale sans GPU (résultats **simulés**)
 
@@ -567,8 +576,13 @@ flou_wm/
 
 ## 10. Tests et débit
 
-`make test` : 265 tests (≈ 3,5 min sur 2 cœurs, dont environ une minute pour préparer les runs simulés de l'analyse ;
-264 exécutés sans Gymnasium, et les 6 tests qui vérifient le message « PyTorch est requis » sont ignorés si PyTorch est installé). Les 73 premiers couvrent le jeu : les règles de la dynamique (blocages, rebonds,
+`make test` : 265 tests (≈ 3,5 min sur 2 cœurs Linux ; ≈ 12 min mesurées sous Windows 11, où chaque test de script paie le
+démarrage d'un interpréteur ; dont environ une minute pour préparer les runs simulés de l'analyse ;
+264 exécutés sans Gymnasium, et les 6 tests qui vérifient le message « PyTorch est requis » sont ignorés si PyTorch est installé).
+**Sous Windows : `PYTHONUTF8=1 uv run pytest`** donne 263 réussis et 2 ignorés (Gymnasium, et le test de pseudo-terminal réservé à
+Unix) ; sans ce réglage, 6 tests échouent sur un `UnicodeEncodeError` d'affichage (§3, §3.8).
+
+Les 73 premiers couvrent le jeu : les règles de la dynamique (blocages, rebonds,
 cycle de l'ennemi, ramassage), les invariants sur de longues parties, la fréquence et
 l'indépendance des branches pour plusieurs p, la pureté du rendu, le fait que A et B ne diffèrent
 que là où est l'ennemi, la formule de δ, les bots, la cohérence des fichiers de données (rejouer
@@ -603,8 +617,9 @@ d'images sur GPU, sonde CNN, mesure des modèles par l'extension « décision »
 n'était pas installable là où il a été écrit. On a seulement vérifié ses noms (`scripts/lint_names.py`) et, en NumPy, les plans
 de paramètres et la comptabilité des connexions du U-Net. Il faut s'attendre à quelques erreurs de forme ou d'API à la première
 exécution ; `scripts/smoke_test.py` est fait pour les révéler en quelques minutes. Aucune durée d'entraînement n'a été mesurée et
-aucun résultat scientifique n'existe. Le lecteur de touches n'a été testé que sur Unix (Linux) ; le chemin Windows
-(`msvcrt`) est écrit mais n'a pas tourné, et le rendu dans Terminal.app de macOS n'a pas été vu
+aucun résultat scientifique n'existe. Le lecteur de touches **interactif** n'a été testé que sur Unix (Linux) : le chemin
+Windows (`msvcrt`) n'a pas tourné. Le reste du jeu, lui, a tourné sous Windows 11 (Python 3.12) avec `PYTHONUTF8=1` : partie
+complète menée par un bot, touches envoyées par un tube, et les 265 tests. Le rendu dans Terminal.app de macOS n'a pas été vu
 (d'où l'option `--colors 256`). L'enveloppe `MiniGameEnv` respecte l'interface Gymnasium (`reset(seed=, options=)`
 renvoie `(obs, info)`, `step` renvoie cinq valeurs), testée sans Gymnasium. Il n'était pas
 installé dans l'environnement de développement : le test `check_env` de Gymnasium ne s'exécute que

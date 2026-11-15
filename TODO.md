@@ -1,8 +1,9 @@
 # Ce qu'il reste à faire
 
 État au 15 novembre 2026. Tout le code NumPy (jeu, bots, données, instruments, analyse, relecture humaine, et l'extension
-« décision » : lecteur de contact, planificateur, contrôles, verdicts) est exécuté et testé (265 tests : 264 réussis, 1 ignoré sans
-Gymnasium). **Aucun résultat scientifique n'existe encore** : le code PyTorch n'a jamais été exécuté et aucun entraînement n'a eu lieu.
+« décision » : lecteur de contact, planificateur, contrôles, verdicts) est exécuté et testé : 265 tests, 264 réussis et 1 ignoré
+faute de Gymnasium sous Linux ; 263 réussis et 2 ignorés sous Windows 11 avec `PYTHONUTF8=1` (le second ignoré est le test de
+pseudo-terminal, réservé à Unix). **Sans `PYTHONUTF8=1`, 6 tests échouent sous Windows** : voir le bloc D. **Aucun résultat scientifique n'existe encore** : le code PyTorch n'a jamais été exécuté et aucun entraînement n'a eu lieu.
 
 **Ce que vous devez faire vous-même, parce qu'il faut un GPU** (je n'en ai pas) : A1, A2, A6, puis A9 à A11 pour l'extension.
 Tout le reste du bloc A tourne sur un simple processeur.
@@ -37,9 +38,12 @@ plan se figent au premier entraînement, et toute modification ultérieure inval
 
 ### Extension « décision » (H4, H5 ; `docs/EXTENSION_DECISION.md`)
 
-- [ ] **A9. Contrôles sans GPU.** `make validate-decision` (≈ 5 min sur 2 cœurs). Crée `data/p0.30/test_decision.npz` et
-  `reports/decision_instrument.json`. Je l'ai exécuté : H0e réussi (100 % d'accord), H0f réussi de peu (0,16 contact par partie ;
+- [ ] **A9. Contrôles sans GPU.** `make validate-decision` (5 min sur 2 cœurs Linux, 14 min mesurées sous Windows 11). Crée
+  `data/p0.30/test_decision.npz` et `reports/decision_instrument.json`. Exécuté deux fois, sur Linux puis sous Windows, avec des
+  résultats identiques : H0e réussi (100 % d'accord sur 30 000 images, 887 contacts), H0f réussi de peu (0,16 contact par partie ;
   +3,16 points sur le bot aléatoire pour un seuil de 3). À relancer chez vous : les fichiers produits ne sont pas livrés.
+  **Sous Windows : préfixer `PYTHONUTF8=1`**, sinon le script plante en affichant son résumé — le rapport est déjà écrit, mais le
+  code de sortie non nul fait croire à un contrôle échoué.
 - [ ] **A10. Niveau 1 (GPU, court).** Après A6 : `make decision` (`uv run scripts/evaluate_decision.py --all`). **Jamais exécuté** ;
   le test de fumée (A2) fait tourner ce code en tout petit : regarder sa ligne « extension décision ».
 - [ ] **A11. Niveau 2 (GPU, long).** D'abord chronométrer :
@@ -94,8 +98,13 @@ plan se figent au premier entraînement, et toute modification ultérieure inval
   `uv sync --extra train --python 3.12`.
 - [ ] **Gymnasium** : `uv sync --extra gym` puis `uv run pytest tests/test_env.py` ; l'enveloppe n'a jamais été exécutée avec le vrai
   Gymnasium (1 test ignoré).
-- [ ] **Terminaux** : le jeu n'a été essayé que dans un pseudo-terminal Linux. À regarder : Windows Terminal, Terminal.app (option
-  `--colors 256`).
+- [ ] **Terminaux et encodage.** Mesuré le 15 novembre sous Windows 11 (Python 3.12) : Python y écrit sa sortie en `cp1252`, donc tout
+  script qui affiche des accents, `δ`, `ρ` ou les cadres du jeu plante sur un `UnicodeEncodeError` (`play.py`,
+  `validate_instrument.py`, `validate_decision.py`, `human_review.py`, `pytest`). Les rapports JSON sont écrits avant l'affichage,
+  mais le code de sortie non nul fait croire à un échec de contrôle. Contournement vérifié : préfixer `PYTHONUTF8=1` (tout passe).
+  **Correctif durable à décider** : forcer l'UTF-8 une fois pour toutes dans `scripts/_bootstrap.py`
+  (`sys.stdout.reconfigure(encoding="utf-8", errors="replace")`, idem `stderr`) — deux lignes, mais c'est du code.
+  Reste à essayer : le clavier interactif (`msvcrt`) dans Windows Terminal, et Terminal.app sous macOS (`--colors 256`).
 - [ ] **Extension « décision », côté PyTorch** : `evaluate_decision_run`, `plan_run`, le découpage des gros lots dans
   `TorchPredictor` (`max_batch = 512`, à baisser si la mémoire du GPU manque) et le débit d'inférence du test de fumée n'ont jamais
   tourné. Les jetons sont exclus du niveau 2 par défaut (coût) : `--families regression diffusion tokens` pour les inclure.

@@ -66,7 +66,7 @@ data: data-train data-val data-test
 validate:
 	$(PY) scripts/validate_instrument.py
 
-# Extension « décision » (docs/EXTENSION_DECISION.md) : contrôles H0e et H0f, ~5 min sur 2 cœurs
+# Extension « décision » (docs/EXTENSION_DECISION.md) : contrôles H0e et H0f ; 5 min sur 2 cœurs Linux, 14 min mesurées sous Windows
 validate-decision:
 	$(PY) scripts/validate_decision.py
 

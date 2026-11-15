@@ -152,6 +152,11 @@ flou en fonction de p. Le sacrifier d'avance, plutôt qu'en catastrophe à la fi
 le budget du niveau 2, qui lui porte H5. Le chiffre devient ferme après `smoke_test.py --time` et
 `plan.py --timing reports/timing.json --budget-hours`, qui donnent le nombre de pas par run réellement finançable.
 
+**Mesuré le 15 novembre 2026** (`smoke_test.py --time`, Tesla T4, PyTorch 2.14) : 0,233 s/pas pour la régression, 0,239 pour la
+diffusion, 0,094 + 0,071 pour les deux stades des jetons, en lot 64. Le plan à 20 000 pas ne coûte que 22,4 h, et
+`--budget-hours 38` donne **34 800 pas par run** — soit très exactement les **28 h** engagées ici pour 19 runs. C'est donc
+cette valeur qui est retenue, et le « ≈ 1,5 h par run » du cours se révèle juste à ce nombre de pas.
+
 **À savoir sur la ressource.** Sur Colab Pro, le plafond réel n'est pas le temps mais les **unités de calcul** : 100 unités par
 mois représentent de l'ordre de 57 à 84 h de T4 selon les mesures publiées, taux qui fluctue. Les 28 h engagées plus la réserve
 tiennent dans un mois ; 37,5 h plus le niveau 2 tiendraient plus difficilement, sans marge pour reprendre une erreur. Refuser un
@@ -212,6 +217,20 @@ Elle a ensuite été vérifiée sur une **seconde graine de parties** (`validate
 0,14), et c'est la **référence** qui bouge, le bot aléatoire passant de −2,06 à −3,00. Autrement dit, la finesse apparente de la
 marge sur la graine 0 venait d'un bot aléatoire anormalement chanceux, pas d'un planificateur limite. Cela confirme le choix de
 traiter le nombre de contacts comme le critère décisif de H0f et le gain comme le critère secondaire.
+
+**Révision du 15 novembre 2026, avant tout entraînement : réglages du niveau 2.** Le test de fumée a mesuré le débit
+d'inférence sur T4 (715 images/s pour la régression, 242 pour la diffusion à n = 3) et en déduit le coût du niveau 2 aux
+réglages par défaut : **1,0 h par run de régression mais 11,7 h par run de diffusion**, soit 38 h pour les six runs du cœur —
+plus que la campagne d'entraînement elle-même, et quatre fois la réserve prévue en C5. Les jetons, à 66 h par run, confirment
+par la mesure qu'ils doivent rester hors du niveau 2.
+
+Le niveau 2 passe donc à **J = 32 suites et 20 parties** (au lieu de 64 et 50), identiques pour tous les runs comme l'exige la
+comparabilité : le coût est divisé par cinq, soit ≈ 7,6 h au total. C'est le motif de révision explicitement prévu par
+`EXTENSION_DECISION.md` (« réduire `--games` ou `--candidates` si la durée est trop longue, et le noter »), et il intervient
+avant le premier entraînement. Contrepartie assumée : avec 20 parties au lieu de 50, l'erreur type sur les contacts par partie
+passe de 0,06 à 0,09, ce qui rend H5a plus difficile à confirmer — dans le sens de la sévérité, donc acceptable.
+**À faire avant le niveau 2** : relancer H0f à ces réglages (`validate_decision.py --games 20 --candidates 32`, sans GPU) pour
+vérifier qu'un planificateur affaibli passe encore le contrôle. S'il échoue, garder J = 64 et ne réduire que les parties.
 
 **Si H0f échoue chez vous.** Ne rien mesurer, et corriger le planificateur ou le lecteur avant toute chose : c'est la consigne
 du dépôt, et elle ne change pas.

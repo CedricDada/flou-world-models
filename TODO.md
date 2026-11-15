@@ -48,7 +48,10 @@ plan se figent au premier entraînement, et toute modification ultérieure inval
   code de sortie non nul fait croire à un contrôle échoué.
 - [ ] **A10. Niveau 1 (GPU, court).** Après A6 : `make decision` (`uv run scripts/evaluate_decision.py --all`). **Jamais exécuté** ;
   le test de fumée (A2) fait tourner ce code en tout petit : regarder sa ligne « extension décision ».
-- [ ] **A11. Niveau 2 (GPU, long).** D'abord chronométrer :
+- [ ] **A11. Niveau 2 (GPU, long).** **Durée mesurée le 15 novembre** par le test de fumée sur T4 : aux réglages par défaut,
+  1,0 h par run de régression, **11,7 h par run de diffusion**, 66 h pour les jetons (d'où leur exclusion). Les réglages ont donc
+  été réduits à `--games 20 --candidates 32` pour tous les runs (≈ 7,6 h au total) : voir la révision de C7 dans
+  `docs/DECISIONS.md`. Relancer H0f à ces réglages avant de mesurer. Pour chronométrer soi-même :
   `uv run scripts/evaluate_decision.py --all --level 2 --games 4 --game-steps 10 --no-save`, et lire l'estimation affichée par
   `smoke_test.py --time` (durée par run, réglages par défaut). Puis `uv run scripts/evaluate_decision.py --all --level 2`
   (6 runs : régression et diffusion du cœur). **Durée inconnue**, à ajouter aux ≈ 38 h du plan ; si elle est trop longue, réduire
@@ -89,8 +92,9 @@ l'hypothèse concernée, la décision et ses raisons, et fixe la règle de révi
   et `uv.lock` est versionné. Reste la **vraie roue PyTorch** (CUDA ou CPU), macOS, et les autres versions de Python
   (`requires-python >= 3.10` est déclaré, vérifié seulement en 3.12/3.13). Si PyTorch n'a pas de roue pour votre Python :
   `uv sync --extra train --python 3.12`.
-- [ ] **Gymnasium** : `uv sync --extra gym` puis `uv run pytest tests/test_env.py` ; l'enveloppe n'a jamais été exécutée avec le vrai
-  Gymnasium (1 test ignoré).
+- [x] **Gymnasium** (fait le 15 novembre) : `check_env` a tourné sur Colab avec Gymnasium 1.4 et passe. Seul avertissement, sans
+  conséquence : l'environnement n'ayant pas de `spec` (instancié directement, pas via `gymnasium.make`), le vérificateur saute le
+  contrôle facultatif des modes de rendu. Pour le lever un jour, il faudrait enregistrer l'environnement avec `gymnasium.register`.
 - [ ] **Terminaux et encodage.** Mesuré le 15 novembre sous Windows 11 (Python 3.12) : Python y écrit sa sortie en `cp1252`, donc tout
   script qui affiche des accents, `δ`, `ρ` ou les cadres du jeu plante sur un `UnicodeEncodeError` (`play.py`,
   `validate_instrument.py`, `validate_decision.py`, `human_review.py`, `pytest`). Les rapports JSON sont écrits avant l'affichage,

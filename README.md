@@ -328,6 +328,9 @@ uv run scripts/analyze.py                  # 10. le rapport contient alors aussi
 - **Durée.** Le cours annonce ≈ 1,5 h par run (≈ 38 h au total) ; ce chiffre **n'a jamais été mesuré**. `plan.py --timing` le calcule d'après le
   temps par pas réellement mesuré par le test de fumée.
 
+**Illustrations** (après un entraînement) : `uv run scripts/filmstrip.py --run-id <run> --gif` écrit, pour quelques états de
+bifurcation, la vérité et ce que le modèle imagine sur 16 pas — la planche où le flou de la régression se voit s'accumuler.
+
 **Relecture humaine** (après l'analyse) : `uv run scripts/human_review.py --help`. Une relecture de 100 cas pour estimer les erreurs du
 classifieur, et un test A/B en aveugle (20 paires, 3 relecteurs). Protocole et limites : [`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md) §6.
 
@@ -553,6 +556,7 @@ flou_wm/
 │   ├── validate_decision.py   extension « décision » : H0e, H0f (sans GPU)
 │   ├── analyze.py             verdicts, tables, figures   dry_run.py   répétition générale simulée
 │   ├── human_review.py        relecture manuelle, A/B     lint_names.py  vérification statique des noms
+│   ├── filmstrip.py           bandes d'images imaginées sur k pas (illustrations ; PyTorch, jamais exécuté)
 │   └── (PyTorch, jamais exécutés) smoke_test.py, train.py, evaluate.py, train_probe.py, run_plan.py, evaluate_decision.py
 ├── tests/                     265 tests (jeu, bots, données, instruments, analyse, extension « décision », outils humains, scripts)
 ├── notebooks/flou_colab.ipynb déroule le projet sur Colab (non exécuté)
@@ -625,9 +629,11 @@ aucun résultat scientifique n'existe. Le lecteur de touches **interactif** n'a 
 Windows (`msvcrt`) n'a pas tourné. Le reste du jeu, lui, a tourné sous Windows 11 (Python 3.12) avec `PYTHONUTF8=1` : partie
 complète menée par un bot, touches envoyées par un tube, et les 265 tests. Le rendu dans Terminal.app de macOS n'a pas été vu
 (d'où l'option `--colors 256`). L'enveloppe `MiniGameEnv` respecte l'interface Gymnasium (`reset(seed=, options=)`
-renvoie `(obs, info)`, `step` renvoie cinq valeurs), testée sans Gymnasium. Il n'était pas
-installé dans l'environnement de développement : le test `check_env` de Gymnasium ne s'exécute que
-s'il est présent, et n'a donc pas encore tourné.
+renvoie `(obs, info)`, `step` renvoie cinq valeurs). Elle a d'abord été testée sans Gymnasium, absent de l'environnement de
+développement ; depuis le 15 novembre 2026, le test `check_env` a **réellement tourné** sur Colab (Gymnasium 1.4, Python 3.13) et
+il passe. Son unique avertissement, « Not able to test alternative render modes due to the environment not having a spec », est
+attendu : l'environnement est instancié directement et non par `gymnasium.make`, il n'a donc pas de `spec` et le vérificateur
+saute ce contrôle facultatif.
 
 ## 11. Utiliser le code depuis Python
 

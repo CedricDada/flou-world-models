@@ -180,7 +180,7 @@ class Trainer:
                     st.after_step(step, logs)
                 n = step + 1
                 if n % cfg.log_every == 0 or n == st.steps:
-                    row = {"stage": st.name, "step": n, "loss": float(loss), "lr": lr, "grad_norm": float(gnorm),
+                    row = {"stage": st.name, "step": n, "loss": float(loss.detach()), "lr": lr, "grad_norm": float(gnorm),
                            "elapsed_s": elapsed + time.time() - t_start, **_to_float(logs)}
                     if not math.isfinite(row["loss"]):
                         bad += 1

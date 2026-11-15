@@ -98,6 +98,9 @@ l'hypothèse concernée, la décision et ses raisons, et fixe la règle de révi
   **Correctif durable à décider** : forcer l'UTF-8 une fois pour toutes dans `scripts/_bootstrap.py`
   (`sys.stdout.reconfigure(encoding="utf-8", errors="replace")`, idem `stderr`) — deux lignes, mais c'est du code.
   Reste à essayer : le clavier interactif (`msvcrt`) dans Windows Terminal, et Terminal.app sous macOS (`--colors 256`).
+- [x] **Test du pseudo-terminal sous Jupyter/Colab** (corrigé le 15 novembre) : `shutil.get_terminal_size()` donne la priorité à
+  `COLUMNS` et `LINES` sur la taille réelle, et Colab les exporte à 80x24 ; le jeu refusait donc de démarrer dans un pseudo-terminal
+  pourtant réglé à 100x50. Le test nettoie maintenant ces deux variables pour le sous-processus.
 - [ ] **Extension « décision », côté PyTorch** : `evaluate_decision_run`, `plan_run`, le découpage des gros lots dans
   `TorchPredictor` (`max_batch = 512`, à baisser si la mémoire du GPU manque) et le débit d'inférence du test de fumée n'ont jamais
   tourné. Les jetons sont exclus du niveau 2 par défaut (coût) : `--families regression diffusion tokens` pour les inclure.

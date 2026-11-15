@@ -140,8 +140,12 @@ def test_script_in_a_real_terminal_reads_single_keypresses():
 
     master, slave = pty.openpty()
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 50, 100, 0, 0))   # 100 colonnes x 50 lignes
+    # shutil.get_terminal_size() donne la priorité à COLUMNS et LINES sur la taille réelle du terminal.
+    # Jupyter et Colab les exportent à 80x24 : sans ce nettoyage, le jeu refuserait de démarrer
+    # (« Terminal trop petit (80x24) ») alors que le pseudo-terminal fait bien 100x50.
+    env = {k: v for k, v in os.environ.items() if k not in ("COLUMNS", "LINES")}
     proc = subprocess.Popen([sys.executable, str(SCRIPT), "--seed", "1", "--colors", "256"],
-                            stdin=slave, stdout=slave, stderr=slave, close_fds=True)
+                            stdin=slave, stdout=slave, stderr=slave, close_fds=True, env=env)
     os.close(slave)
     seen = ""
 

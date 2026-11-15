@@ -1,0 +1,58 @@
+# Projet géré avec uv (https://docs.astral.sh/uv/) :
+#   uv sync                    environnement .venv : numpy, scipy + groupes par défaut `dev` et `viz` (tout sauf PyTorch)
+#   uv sync --extra train      en plus, PyTorch (machine d'entraînement) ; ne jamais lancer un `uv sync` nu ensuite sur cette machine,
+#                              car `uv sync` est « exact » : il désinstallerait PyTorch. `uv run` ne désinstalle rien.
+#   uv run scripts/play.py     lance une commande dans cet environnement (le synchronise d'abord, silencieusement)
+#   uv lock                    écrit/rafraîchit uv.lock (à versionner : il fixe les versions exactes)
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flou-wm"
+version = "0.1.0"
+description = "Où naît le flou ? Mini-jeu stochastique, bots et données pour comparer régression, diffusion et jetons discrets."
+readme = "README.md"
+requires-python = ">=3.10"
+# Ce qu'il faut pour le jeu, les bots, les données, les instruments et l'analyse.
+# scipy : intervalles de Clopper-Pearson, t de Student, rangs de Spearman.
+dependencies = ["numpy>=1.24", "scipy>=1.10"]
+
+[project.optional-dependencies]
+# Modèles A, B, C et entraînement (scripts/train.py, run_plan.py, smoke_test.py, evaluate.py).
+# Facultatif : le reste du projet (jeu, données, instruments, analyse, répétition générale) n'en a pas besoin.
+train = ["torch>=2.1"]
+# Enveloppe Gymnasium du mini-jeu (facultative).
+gym = ["gymnasium>=0.29"]
+
+[dependency-groups]
+dev = ["pytest>=7"]
+# Planches PNG (démonstration, relecture humaine) et figures d'analyse.
+viz = ["pillow>=9", "matplotlib>=3.6"]
+
+[tool.uv]
+# `uv sync` et `uv run` installent ces groupes sans qu'on ait à les demander (--no-group viz pour s'en passer).
+default-groups = ["dev", "viz"]
+
+# --- PyTorch : choix de la version (CPU / CUDA) -------------------------------------------------
+# Par défaut, `torch` vient de PyPI : roue CUDA sous Linux, roue CPU sous Windows et macOS. C'est ce qu'il faut pour
+# une machine GPU Linux ordinaire, et rien n'est à configurer.
+# Pour forcer la roue CPU (machine sans GPU : téléchargement bien plus léger) ou une version CUDA précise, décommenter
+# ci-dessous et adapter (guide : https://docs.astral.sh/uv/guides/integration/pytorch/). Ensuite : `uv lock` puis `uv sync --extra train`.
+#
+# [tool.uv.sources]
+# torch = [{ index = "pytorch-cpu" }]
+#
+# [[tool.uv.index]]
+# name = "pytorch-cpu"
+# url = "https://download.pytorch.org/whl/cpu"
+# explicit = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q"

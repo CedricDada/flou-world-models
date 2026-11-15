@@ -1,0 +1,21 @@
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.venv/
+data/*
+docs/*
+runs/*
+!data/README.md
+!data/.gitkeep
+!runs/README.md
+!runs/.gitkeep
+# Résultats de mesure : produits par les scripts, jamais versionnés (seul le README du dossier l'est).
+reports/*
+!reports/README.md
+# Répétition générale : résultats SIMULÉS (scripts/dry_run.py), à ne jamais committer.
+data_dryrun/
+runs_dryrun/
+*.npz
+*.pt
+*.ckpt

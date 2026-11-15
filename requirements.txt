@@ -1,0 +1,12 @@
+# Pour ceux qui n'utilisent pas uv (`pip install -r requirements.txt`). Avec uv, tout est dans pyproject.toml : `uv sync`.
+numpy>=1.24
+scipy>=1.10
+# planches PNG (démonstration, relecture humaine) et figures d'analyse
+pillow
+matplotlib
+# tests
+pytest
+# facultatif : enveloppe Gymnasium du mini-jeu
+# gymnasium>=0.29
+# entraînement des modèles (GPU) : installé d'office sur Colab ; ailleurs, voir https://pytorch.org
+# torch>=2.1

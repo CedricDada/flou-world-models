@@ -390,6 +390,9 @@ ou autre.
 | H3a | Le rappel du petit objet baisse quand K diminue (K = 64 contre 1 024, écart > 2,3 écarts-types poolés sur 3 graines) | pas d'écart |
 | H3b | Le rappel prédit mieux la qualité à l'horizon 16 que la MSE | exploratoire, rapportée sans seuil |
 
+Les choix laissés ouverts par l'énoncé (seuils conservés ou non, nombre de comparaisons, budget, lecteurs) ont été tranchés **avant
+tout entraînement** et sont justifiés un par un dans [`docs/DECISIONS.md`](docs/DECISIONS.md).
+
 Les contrôles H0 et le découpage de H2 en H2a/H2b viennent du cours préparatoire (chap. 7), qui
 précise le dossier initial ; de même H3a compare les deux extrémités K = 64 et K = 1 024 plutôt
 qu'un ordre monotone sur trois moyennes, qui apparaît par hasard une fois sur six.
@@ -517,6 +520,7 @@ flou_wm/
 ├── docs/
 │   ├── README.md              index des documents
 │   ├── GAME_SPEC.md           règles exactes du jeu, état, hasard, limites
+│   ├── DECISIONS.md           décisions prises avant le premier entraînement (hypothèse, décision, raisons)
 │   ├── EXPERIMENTS.md         plan des 25 runs, règles de décision, état de vérification
 │   ├── EXTENSION_DECISION.md  extension « décision » : H4, H5, articles qui les guident, mesures sans modèle
 │   ├── cours/                 cours préparatoire (PDF, .tex, figures, recalcul des nombres)

@@ -147,6 +147,9 @@ s'ajoute aux ≈ 38 h du plan. Les jetons sont exclus du niveau 2 par défaut (6
 
 ## 7. Décisions à confirmer avant les premières mesures
 
+**Toutes tranchées le 15 novembre 2026 — voir [`DECISIONS.md`](DECISIONS.md), C6 à C8 :** H5a gardée telle quelle avec le lecteur
+doux, seuils et réglages du planificateur confirmés, récompense lue dans les pixels assumée. Ce qui suit est la liste d'origine.
+
 1. Garder H5a telle quelle (en sachant qu'elle est réfutée pour des modèles parfaits, §3), ou la reformuler.
 2. Seuils : 0,10 (H4a), 0,02 et 0,05 (H4b), 0,5 contact par partie (H5a), contrôle H0f (qui passe de peu).
 3. Planificateur : J = 64, H = 8, m = 4, λ = 0,5, 50 parties, lecteur doux, p = 0,3 seulement.

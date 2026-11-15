@@ -5,8 +5,9 @@
 faute de Gymnasium sous Linux ; 263 réussis et 2 ignorés sous Windows 11 avec `PYTHONUTF8=1` (le second ignoré est le test de
 pseudo-terminal, réservé à Unix). **Sans `PYTHONUTF8=1`, 6 tests échouent sous Windows** : voir le bloc D. **Aucun résultat scientifique n'existe encore** : le code PyTorch n'a jamais été exécuté et aucun entraînement n'a eu lieu.
 
-**Ce que vous devez faire vous-même, parce qu'il faut un GPU** (je n'en ai pas) : A1, A2, A6, puis A9 à A11 pour l'extension.
-Tout le reste du bloc A tourne sur un simple processeur.
+**Ce qui demande vraiment un GPU** : A2, A6, A10 et A11 (et A4, facultatif). A1 n'est qu'une installation, A3, A5, A7 et A9 tournent
+sur un simple processeur — mais il est plus simple de les lancer là où sont les runs et les données.
+**Sur Colab, tout cela est déjà enchaîné par `notebooks/flou_colab.ipynb`** (cellules 2 à 26), dans cet ordre.
 
 Chemin critique : **A1 → A2 → A3 → A5 → A6 → A7 → B**, puis, pour l'extension « décision » : **A9 → A10 → A11 → A7**.
 Les décisions du bloc C se prennent **avant A6** (C6 à C8 : avant A10) : les paramètres du jeu et du
@@ -14,7 +15,8 @@ plan se figent au premier entraînement, et toute modification ultérieure inval
 
 ## A. Sur une machine avec GPU (bloquant, dans l'ordre)
 
-- [ ] **A1. Installer.** `uv sync --extra train` (ou `make sync-train`). `uv.lock` est **déjà versionné** (résolution PyPI faite le
+- [ ] **A1. Installer.** Sur Colab, rien à faire : le notebook clone le dépôt et complète avec `pip` (PyTorch y est déjà).
+  Sur une machine à vous : `uv sync --extra train` (ou `make sync-train`). `uv.lock` est **déjà versionné** (résolution PyPI faite le
   15 novembre, PyTorch compris) : l'installation doit donc reprendre ces versions figées. Si le téléchargement de la roue PyTorch
   échoue, copier l'erreur (c'est `pyproject.toml` qu'il faudra corriger).
   Ne pas relancer ensuite un `uv sync` nu : il désinstalle PyTorch (README §2).
@@ -57,38 +59,29 @@ plan se figent au premier entraînement, et toute modification ultérieure inval
 - [ ] **Relecture de 100 cas** pour estimer les erreurs du classifieur, et **test A/B en aveugle** (20 paires × 3 relecteurs) :
   `uv run scripts/human_review.py --help`. Il faut trouver trois relecteurs. Protocole et limites : `docs/EXPERIMENTS.md` §6.
 
-## C. Décisions à prendre (avant A6)
+## C. Décisions prises (avant A6)
 
-- [x] **C1. Où est le « modèle du monde » ?** Tranché le 15 novembre : l'extension « décision » est implémentée (estimation d'un
-  risque, puis planification dans le modèle). Restent hors du dépôt une récompense apprise et un agent entraîné dans le modèle
-  (trop coûteux pour un T4).
-- [ ] **C2. H2b sera probablement réfutée même avec un débruiteur parfait.** Sur le modèle jouet (p = 0,3), l'échantillonneur d'Euler à
-  n = 3 donne p̂ ≈ 0,19 (erreur ≈ 0,11) à cause de la discrétisation, pas de l'entraînement (`docs/EXPERIMENTS.md` §5). Décider avant
-  les runs : garder H2b telle quelle et la lire comme « n = 3 pas d'Euler ne suffit pas », ou changer d'échantillonneur / de n. Ce calcul
-  est une idéalisation (1 dimension, débruiteur exact), pas une prédiction pour le réseau entraîné.
-- [ ] **C3. Choix d'interprétation à confirmer ou à changer** (marqués **[choix]** dans `docs/EXPERIMENTS.md`, modifiables sans toucher
-  au reste) :
-  - les 3 contrôles = oracle (H0c), régression à p = 0 (H0d), diffusion à p = 0 ;
-  - « grille » = grille de jetons 16 × 16 à K = 256, une graine ;
-  - ρmax réglé sur du bruit synthétique σ = 0,01 (quantile 99,5 %, ρmax ≈ 0,16) ;
-  - H0b évalué sur le rapport des MSE **en espérance** (un échantillonneur parfait a un rapport de 2, une régression idéale de 1) ;
-  - qualité à l'horizon 16 = agent *et* obstacle suivis à ≤ 3 px ;
-  - réanimation des codes morts du VQ activée par défaut ; pas de moyenne EMA par défaut ;
-  - budget apparié (pas × lot), famille C répartie 40 % VQ / 60 % Transformer.
-- [ ] **C4. Puissance statistique.** Avec 3 graines contre 3, la puissance n'est que de 0,46 pour un effet d = 2 (seuil non apparié
-  2,27 s ; Bonferroni : 3,23 / 3,96 / 4,57 s pour 3 / 6 / 10 comparaisons). Accepter, ou prévoir plus de graines pour les runs du cœur.
-- [ ] **C5. Budget et ordre de sacrifice.** Fixer le budget réel en heures de GPU et les groupes sacrifiés d'avance
-  (`--skip-groups p_axis grid`, `--max-hours`).
-- [ ] **C6. H5a sera probablement réfutée si les modèles sont bons.** Mesuré sur le vrai jeu avec des modèles factices : une image
-  moyenne *exacte* lue par le lecteur doux donne 0,02 contact par partie, contre 0,16 pour le vrai jeu échantillonné 4 fois. H5a
-  (« la régression subit au moins 0,5 contact de plus ») ne peut donc être confirmée que si la régression réelle se dégrade en
-  recevant ses propres images floues. Décider avant A11 : garder H5a telle quelle (une réfutation est un résultat, comme pour H2b),
-  ou la reformuler (par exemple avec le lecteur à seuil : 0,60 contact pour l'image moyenne exacte).
-- [ ] **C7. Seuils et réglages de l'extension** (tous **[choix]**, `docs/EXTENSION_DECISION.md` §7) : 0,10 (H4a) ; 0,02 et 0,05 (H4b) ;
-  0,5 contact (H5a) ; H0f (le critère « +3 points » passe de peu : le score du bot aléatoire varie de −2 à −3,3 selon les parties) ;
-  J = 64, H = 8, m = 4, λ = 0,5, 50 parties, lecteur doux, p = 0,3 seulement ; 3 000 états de test au niveau 1.
-- [ ] **C8. Récompense lue dans les pixels.** Elle est supposée connue (PlaNet l'apprend). C'est la limite principale du niveau 2 ;
-  l'apprendre demanderait de ré-entraîner. À assumer dans le rapport, ou à lever.
+**Toutes tranchées le 15 novembre 2026, avant tout entraînement : [`docs/DECISIONS.md`](docs/DECISIONS.md).** Ce document rappelle
+l'hypothèse concernée, la décision et ses raisons, et fixe la règle de révision (après le premier run, toute modification s'ajoute
+à sa date, sans effacer la précédente). Résumé :
+
+- [x] **C1. Où est le « modèle du monde » ?** L'extension « décision » est implémentée (risque estimé, puis planification).
+- [x] **C2. H2b.** Seuil gardé, n = 3 inchangé ; le verdict se lit avec la courbe p̂(n) (`fig_calibration.png`), gratuite puisque
+  l'échantillonnage ne demande aucun ré-entraînement. Une réfutation sera lue comme « 3 pas d'Euler ne suffisent pas à retrouver p ».
+- [x] **C3. Les sept choix d'interprétation** sont confirmés, avec deux réserves à écrire dans le rapport : ρmax ≈ 0,16 est une
+  convention (la part de « autre » n'est pas un taux absolu ; joindre la table de sensibilité), et l'axe K fait varier aussi la
+  capacité (5,91 M à K = 64 contre 6,59 M à K = 1 024).
+- [x] **C4. Puissance.** 3 graines acceptées ; **k = 3 comparaisons simultanées fixé d'avance** (H1, H2a, H3a), soit un seuil de
+  3,23 écarts-types poolés. Budget résiduel éventuel → graines supplémentaires sur l'axe K, pas sur l'axe p.
+- [x] **C5. Budget.** 19 runs ≈ 28 h engagés (cœur, contrôles, axe K, grille) + ~10 h de réserve pour le niveau 2 ;
+  `--skip-groups p_axis` dès le départ, l'axe p seulement en bonus. Chiffre ferme après A2 et A5.
+- [x] **C6. H5a** gardée telle quelle, lecteur doux (le plus sévère) ; le niveau 2 n'est pas doublé avec le lecteur à seuil, dont le
+  contraste est déjà payé au niveau 1 par H4a/H4b.
+- [x] **C7. Seuils de l'extension** confirmés ; la marge fine de H0f (+3,16 pour un minimum de 3) est reproductible et non
+  chanceuse — mêmes chiffres sur deux systèmes d'exploitation, et marge plus large sur une seconde graine de parties (+4,02 points,
+  0,14 contact). Le planificateur est stable (score 1,10 puis 1,02) ; c'est le bot aléatoire de référence qui varie (−2,06 puis −3,00).
+- [x] **C8. Récompense lue dans les pixels** assumée : elle rend tout écart du niveau 2 imputable au seul modèle de dynamique, et
+  interdit en retour toute conclusion sur un système bout-en-bout.
 
 ## D. Non vérifié (à tester quand l'occasion se présente)
 
@@ -108,8 +101,9 @@ plan se figent au premier entraînement, et toute modification ultérieure inval
 - [ ] **Extension « décision », côté PyTorch** : `evaluate_decision_run`, `plan_run`, le découpage des gros lots dans
   `TorchPredictor` (`max_batch = 512`, à baisser si la mémoire du GPU manque) et le débit d'inférence du test de fumée n'ont jamais
   tourné. Les jetons sont exclus du niveau 2 par défaut (coût) : `--families regression diffusion tokens` pour les inclure.
-- [ ] **Extension « décision », robustesse** : une seule graine de parties (50 parties) pour les chiffres de référence ; le lecteur de
-  contact suppose la palette par défaut (sur le rail, seul l'ennemi est rouge) : H0e le revérifie si vous changez les couleurs.
+- [ ] **Extension « décision », robustesse** : deux graines de parties mesurées (50 parties chacune, graines 0 et 1), planificateur
+  stable et H0f réussi aux deux ; une troisième n'apporterait probablement rien. Le lecteur de contact suppose en revanche la palette
+  par défaut (sur le rail, seul l'ennemi est rouge) : H0e le revérifie si vous changez les couleurs.
 - [ ] **Suite de tests avec PyTorch** : quelques tests (ceux qui vérifient le message « PyTorch est requis ») sont ignorés quand PyTorch
   est installé ; c'est normal. Relancer `make test` sur la machine GPU pour voir le décompte réel.
 

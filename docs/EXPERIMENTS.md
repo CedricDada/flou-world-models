@@ -2,7 +2,8 @@
 
 Ce document dit **quoi lancer, dans quel ordre, comment lire les verdicts, et ce qui a été vérifié ou non**. Il complète le
 cours (`docs/cours/`, chap. 7 et 9) et les descriptions de projet (`docs/projet/`) ; en cas d'écart avec le dossier
-initial, le cours fait foi. Les choix d'interprétation que j'ai dû faire sont marqués **[choix]** : ils sont modifiables sans
+initial, le cours fait foi. Les choix d'interprétation que j'ai dû faire sont marqués **[choix]** ; ils ont tous été tranchés le 15 novembre 2026, avant tout
+entraînement, dans [`DECISIONS.md`](DECISIONS.md). Ils sont modifiables sans
 toucher au reste (`src/flou/train/runs.py` pour le plan, `src/flou/eval/analysis.py` pour les règles).
 
 ## 1. Ordre d'exécution

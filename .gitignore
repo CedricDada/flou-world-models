@@ -4,7 +4,8 @@ __pycache__/
 .pytest_cache/
 .venv/
 data/*
-docs/*
+docs/cours/*
+docs/projet/*
 runs/*
 !data/README.md
 !data/.gitkeep

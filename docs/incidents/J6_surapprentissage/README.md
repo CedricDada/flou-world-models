@@ -7,6 +7,10 @@ l'analyse sont dans [`../../JOURNAL.md`](../../JOURNAL.md) (entrée J6) ; la dé
 **Ne pas lire ces chiffres comme un résultat du projet.** Ils proviennent d'une configuration abandonnée (100 000 transitions
 d'entraînement, remplacées par 400 000) et aucun verdict n'en est tiré. Ils sont là comme pièce à conviction.
 
+**Le correctif a fonctionné.** Le même run relancé sur 400 000 transitions passe le contrôle : MSE / plancher de Bayes
+1,011 au lieu de 1,47, flou 98,2 % au lieu de 22,5 %, et une validation plate (+0,5 % contre +49 %). Le tableau ci-dessous
+décrit l'essai raté, pas l'état du projet.
+
 | Fichier | Contenu |
 |---|---|
 | `log.jsonl` | 366 lignes : 348 journaux d'entraînement (tous les 100 pas) et 18 de validation (tous les 2 000 pas) |

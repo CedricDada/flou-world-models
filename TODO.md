@@ -1,13 +1,17 @@
 # Ce qu'il reste à faire
 
-État au 15 novembre 2026. Tout le code NumPy (jeu, bots, données, instruments, analyse, relecture humaine, et l'extension
+État au 16 novembre 2026. Tout le code NumPy (jeu, bots, données, instruments, analyse, relecture humaine, et l'extension
 « décision » : lecteur de contact, planificateur, contrôles, verdicts) est exécuté et testé : 265 tests, 264 réussis et 1 ignoré
 faute de Gymnasium sous Linux ; 263 réussis et 2 ignorés sous Windows 11 avec `PYTHONUTF8=1` (le second ignoré est le test de
-pseudo-terminal, réservé à Unix). **Sans `PYTHONUTF8=1`, 6 tests échouent sous Windows** : voir le bloc D. **Aucun résultat scientifique n'existe encore** : le code PyTorch n'a jamais été exécuté et aucun entraînement n'a eu lieu.
+pseudo-terminal, réservé à Unix). **Sans `PYTHONUTF8=1`, 6 tests échouent sous Windows** : voir le bloc D. Le code PyTorch tourne désormais, et **le premier résultat est acquis** : `core-regression-p0.30-s0` est entraîné et évalué,
+H0b réussi (MSE / plancher de Bayes 1,011) et flou 98,2 %. Un premier essai avait été rejeté pour surapprentissage et les
+données portées de 100 000 à 400 000 transitions (`docs/JOURNAL.md`, J6). **Les 11 autres runs prioritaires restent à
+faire** : aucune hypothèse comparant les familles n'est donc encore évaluable.
 
 **Ce qui demande vraiment un GPU** : A2, A6, A10 et A11 (et A4, facultatif). A1 n'est qu'une installation, A3, A5, A7 et A9 tournent
 sur un simple processeur — mais il est plus simple de les lancer là où sont les runs et les données.
-**Sur Colab, tout cela est déjà enchaîné par `notebooks/flou_colab.ipynb`** (cellules 2 à 26), dans cet ordre.
+**Sur Kaggle, tout cela est déjà enchaîné par `notebooks/flou_kaggle.ipynb`**, dans cet ordre, en une session qui tourne en
+arrière-plan (`docs/JOURNAL.md`, J8). Le notebook Colab fait de même mais exige que la machine reste éveillée.
 
 Chemin critique : **A1 → A2 → A3 → A5 → A6 → A7 → B**, puis, pour l'extension « décision » : **A9 → A10 → A11 → A7**.
 Les décisions du bloc C se prennent **avant A6** (C6 à C8 : avant A10) : les paramètres du jeu et du
@@ -34,9 +38,9 @@ plan se figent au premier entraînement, et toute modification ultérieure inval
   une coupure. Ordre de priorité : cœur (9) et contrôles (3), puis axe K (6), grille (1), axe p (6, sacrifié en premier).
 - [ ] **A7. Analyse.** `make analyze` → `reports/report.md`. Avant de conclure sur H2b, regarder la courbe p̂(n)
   (`calibration_par_n.csv`, `fig_calibration.png`) : voir C2.
-- [ ] **A8. Notebook Colab.** `notebooks/flou_colab.ipynb` n'a jamais été exécuté. À tester une fois si Colab est la voie choisie
-  (il utilise pip, PyTorch y étant déjà installé). Sa première cellule **clone le dépôt GitHub** dans `/content/flou_wm` : vérifier
-  l'URL (et y mettre un jeton si le dépôt est privé).
+- [x] **A8. Notebooks.** `notebooks/flou_colab.ipynb` a été exécuté jusqu'au premier entraînement réel (J6), puis remplacé par
+  `notebooks/flou_kaggle.ipynb` pour la campagne (J8). Reste à confirmer sur Kaggle, en mode commit : la publication de l'état
+  vers le Dataset et le verdict de surapprentissage du run relancé.
 
 ### Extension « décision » (H4, H5 ; `docs/EXTENSION_DECISION.md`)
 

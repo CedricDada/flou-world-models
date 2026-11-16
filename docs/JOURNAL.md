@@ -18,6 +18,94 @@ Les décisions de protocole, elles, vivent dans [`DECISIONS.md`](DECISIONS.md) :
 
 ---
 
+## J8 — Colab libérait la T4 à chaque mise en veille : la campagne passe sur Kaggle
+
+**16 novembre 2026.**
+
+**Symptôme.** Avec Colab Pro (T4 garantie, sans l'option Pro+), l'entraînement s'arrêtait dès que l'ordinateur se mettait en
+veille ou que la fenêtre se fermait : le runtime était libéré et la T4 rendue. Le run `core-regression-p0.30-s0` (400 000
+transitions, après J6) n'avançait donc que par morceaux. Les checkpoints sur Drive ont évité toute perte : on lit
+« reprise : stade 0, pas 10000, 0.77 h déjà consommées » dans une session, puis le checkpoint du pas 28 000 (2,18 h) dans la
+suivante.
+
+**Cause.** D'après les sources consultées (non vérifié par un test), l'exécution en arrière-plan est réservée à Colab Pro+ et
+au-delà ; avec Pro, le runtime reste lié à l'interface ouverte. Les checkpoints rendent un run reprenable, pas autonome : il
+fallait garder la machine éveillée pendant des dizaines d'heures.
+
+**Options examinées.**
+
+| Option | Pour | Contre |
+|---|---|---|
+| Colab Pro+ (49,99 $/mois) | aucun changement de code | abonnement, coût |
+| Location de GPU (RunPod, Vast.ai, Lambda…) | machine dédiée, `tmux` ou `nohup` | payant, administration, oubli d'extinction facturé |
+| **Kaggle** | gratuit, T4 x2, « Save & Run All (Commit) » tourne en arrière-plan | quota hebdomadaire, 12 h par session, Drive non montable |
+
+**Le quota, vérifié.** Kaggle annonce environ 30 h de GPU par semaine (sa page d'aide dit « 30 hours or sometimes higher
+depending on demand and resources »), et ajoute **15 h par semaine** aux comptes liés à un abonnement Colab Pro — 30 h pour
+Pro+ — sous forme de promotion expérimentale, révocable sans préavis. Le compte utilisé étant Pro, la réserve attendue est de
+**45 h par semaine**. Le chiffre qui fait foi est celui affiché dans les réglages du compte Kaggle, pas ces annonces.
+
+**Ce que cela change pour le calendrier.** Le plan annonce 38 h pour les 25 runs, estimation produite par `plan.py` à partir
+des temps du test de fumée. Le seul run réellement chronométré, `core-regression-p0.30-s0`, a demandé **2,7 h** pour
+34 800 pas — et la régression est la famille la moins chère. Les 12 runs prioritaires (4 régressions, 4 diffusions, 3 jetons,
+1 oracle) coûteront donc **au moins 32 h**, vraisemblablement davantage : environ une semaine de quota. Les 25 runs du plan
+complet dépassent nettement les 38 h annoncées. À recalculer avec `plan.py --timing` dès qu'un run de diffusion et un run de
+jetons auront été chronométrés.
+
+**Solution retenue : Kaggle, avec l'état du projet dans un Dataset privé.**
+
+1. Le dossier `flou_wm` de Drive a été compressé en `etat.zip` (`runs/` et `reports/`), puis envoyé comme Dataset Kaggle privé
+   `cedricdada/flou-wm-etat` (66 Mo). `data/` n'y est pas : la génération est déterministe, et deux générations successives
+   donnent des tableaux identiques (vérifié avec NumPy). Les données sont donc régénérées à chaque session, en une minute.
+2. Nouveau notebook [`notebooks/flou_kaggle.ipynb`](../notebooks/flou_kaggle.ipynb). Une session est un commit Kaggle :
+   - `restore_state()` copie l'état du Dataset dans `/kaggle/working/flou_wm` ;
+   - clonage du dépôt, données, `validate_instrument.py` ;
+   - entraînement selon `STAGE` : `first_run` termine et évalue seulement `core-regression-p0.30-s0` ; `core_control`
+     lance `run_plan.py --groups core control --max-hours 10` ;
+   - contrôle du surapprentissage : `training_curves.py`, H0b, flou de la régression, puis un verdict « feu vert » ou « ne pas
+     lancer le cœur » ;
+   - `save_state()` publie une nouvelle version du Dataset avec le Kaggle CLI. Le jeton API est rangé dans un secret Kaggle
+     (`flou-wm`), jamais dans le code.
+3. `/kaggle/working/flou_wm` devient aussi la sortie de chaque version : c'est un filet de sécurité si l'envoi au Dataset
+   échoue.
+
+**Écueils rencontrés en route.** Chacun est évité dans le notebook.
+
+| Écueil | Correction |
+|---|---|
+| Accélérateurs grisés (seul « None » disponible) | Vérification du compte par téléphone |
+| `git clone` : « Could not resolve host: github.com » | Internet coupé par défaut : activer *Internet On* |
+| `drive.mount` lève `NotImplementedError` hors de Colab | Remplacé par le Dataset |
+| Archive au format zip, pas tar | `zipfile` au lieu de `tarfile` |
+| Chemin réel du Dataset : `/kaggle/input/datasets/cedricdada/flou-wm-etat/etat` | Recherche récursive de `runs/` sous `/kaggle/input` |
+| La cellule du notebook Colab qui archive le run à 100 000 transitions puis vide `runs/` (le `shutil.move` suivi des `rmtree`, juste après la génération des données de la section 4) aurait effacé le run en cours si elle avait été relancée | Absente du notebook Kaggle |
+| Un commit reprend la version du Dataset attachée au notebook | Mettre l'entrée à jour avant chaque session |
+
+**Vérifié sur Kaggle**, en sessions interactives :
+- tests NumPy passés et test de fumée entièrement `[OK]` sur T4, avec PyTorch 2.11.0+cu130 ;
+- ρmax = 0,1599 et H0a réussi, avec les 2 000 états de test (J7) ;
+- reprise du run au pas 28 000 confirmée (« reprise : stade 0, pas 28000, 2.18 h déjà consommées ») ;
+- authentification du CLI correcte (`kaggle datasets list --mine`).
+
+La cellule de contrôle a aussi été testée hors GPU, sur un régresseur simulé (verdict « feu vert ») et sur un journal
+reproduisant J6 (verdict « ne pas lancer », deux alertes).
+
+**Réserve à mentionner dans le rapport.** Le run `core-regression-p0.30-s0` a été entraîné jusqu'au pas 28 000 sur Colab
+(PyTorch 2.14.1), puis terminé sur Kaggle (PyTorch 2.11.0), sur le même modèle de GPU (T4). Le changement de version ne remet
+pas en cause la validité du run, mais il empêche de le reproduire au bit près. Tous les runs suivants tournent entièrement sur
+Kaggle. Une seule des deux T4 est utilisée : le quota se compte en heures de session, pas en heures de carte, donc faire
+tourner deux runs en parallèle (`CUDA_VISIBLE_DEVICES=0` et `=1`, par exemple `--groups core` d'un côté et `--groups control`
+de l'autre) diviserait par deux le quota consommé par la campagne. Piste non essayée, à peser contre le risque de saturer la
+mémoire ou les processeurs de la session.
+
+**Statut : résolu.** Le premier commit (`STAGE = 'first_run'`) a tourné de bout en bout le 16 novembre 2026. Les quatre
+points en attente sont levés : reprise au pas 28 000, run terminé (2,67 h cumulées sur T4, 5 872 771 paramètres),
+évaluation faite en 16 s, et publication de `etat.zip` (44 Mo) vers le Dataset **depuis le mode batch** — le secret Kaggle
+est donc bien lisible hors session interactive. Le verdict de surapprentissage est au vert (J6), ce qui autorise le passage
+à `STAGE = 'core_control'`.
+
+---
+
 ## J7 — Relecture externe : deux défauts d'analyse trouvés avant la campagne
 
 **16 novembre 2026.** Les dossiers `docs/cours/` et `docs/projet/` ont été confiés à un agent externe pour relecture
@@ -140,12 +228,21 @@ mesure autre chose que ce qu'on croit*. À 100 000 transitions, le dispositif me
 le flou inhérent à la perte quadratique. La révision est tracée à sa date dans [`DECISIONS.md`](DECISIONS.md), et le rapport
 final doit porter la mention de ce changement.
 
-**Statut : en cours de vérification.** Avant d'engager les 28 h de campagne, un seul run est relancé aux nouvelles données
-(2,7 h) et doit satisfaire deux critères : la validation ne remonte plus jusqu'au pas 34 800, et `ratio_expected` revient dans
-[1,00 ; 1,10]. Le premier critère est désormais automatisé — `scripts/training_curves.py` trace les courbes et lève une alerte,
-avec un code de sortie non nul (voir J7). Réserve honnête : le meilleur point de validation atteint valait 1,22 × le plancher, sur une grandeur différente
-(toutes transitions, et non les seules bifurcations), donc non directement comparable — rien ne garantit l'atterrissage dans la
-bande.
+**Statut : résolu.** Le run relancé sur 400 000 transitions s'est terminé le 16 novembre 2026 et satisfait les deux critères
+fixés d'avance. La validation ne remonte plus : minimum 0,000771 au pas 30 000, 0,000775 à l'arrivée, soit **+0,5 %**, dans le
+bruit — contre +49 % au run fautif. Et `ratio_expected` vaut **1,011**, au cœur de la bande [1,00 ; 1,10], contre 1,47 ; la
+fuite reste nulle (z = 0,7, alerte à 3). H0b est donc **réussi**. La réserve ci-dessus est levée : l'atterrissage dans la bande
+a bien eu lieu. Le contrôle a été rendu automatique entre-temps — `scripts/training_curves.py` trace les courbes et lève une
+alerte avec un code de sortie non nul (J7) ; il a conclu « aucun symptôme de surapprentissage ».
+
+Le gain sur l'hypothèse centrale est net : le flou de la régression passe de **22,5 % à 98,2 %** des 2 000 images de test, et
+« autre » de 2,0 % à 1,4 %. Côté régression, H1 est confirmée très au-delà de son seuil (50 %). Avec 0,4 % d'images nettes,
+p̂ n'est plus estimable sur cette famille (8 images, intervalle [0,000 ; 0,369]) : c'est le comportement attendu d'un
+prédicteur qui produit la moyenne, et cela ne touche pas H2b, dont le verdict est défini sur la diffusion à n = 3.
+
+Le passage de 100 000 à 400 000 transitions est donc **le correctif qui a sauvé l'hypothèse centrale du projet** : sans lui,
+la régression aurait été mesurée comme produisant des images nettes mémorisées, et H1 aurait été réfutée pour une raison qui
+n'avait rien à voir avec ce qu'elle prétend mesurer.
 
 **Preuves conservées.** Le run fautif n'est pas supprimé. Ses deux fichiers de mesure sont versionnés dans le dépôt, sous
 [`incidents/J6_surapprentissage/`](incidents/J6_surapprentissage/) : `log.jsonl` (348 points d'entraînement, 18 de validation)

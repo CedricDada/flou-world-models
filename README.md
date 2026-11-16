@@ -300,9 +300,15 @@ Le script d'analyse refuse d'écrire des runs simulés dans `reports/`, réserv�
 
 ### 3.6 Entraînement réel (GPU requis)
 
-**Sur Colab (le plus simple).** Ouvrir `notebooks/flou_colab.ipynb` dans Google Colab, choisir un GPU (*Exécution → Modifier le type
-d'exécution → T4*) et exécuter les cellules dans l'ordre : la première **clone le dépôt** dans `/content/flou_wm` (dépôt privé : y mettre un
-jeton d'accès), puis le notebook enchaîne les commandes ci-dessous et garde les résultats sur Google Drive pour survivre aux coupures de session. **Il n'a jamais été exécuté.**
+**Sur Kaggle (la voie retenue).** Ouvrir `notebooks/flou_kaggle.ipynb` sur Kaggle, régler l'accélérateur sur *GPU T4 x2*,
+activer *Internet On*, attacher le Dataset privé `flou-wm-etat` à sa dernière version, puis lancer **Save & Run All
+(Commit)**. La session tourne en arrière-plan, machine éteinte, 12 h au plus ; l'état (`runs/`, `reports/`) est repris du
+Dataset au début et republié à la fin, si bien que l'entraînement reprend au dernier checkpoint d'une session à l'autre.
+La variable `STAGE` de la première cellule choisit ce que fait la session. Voir `docs/JOURNAL.md`, J8.
+
+**Sur Colab.** `notebooks/flou_colab.ipynb` fait la même chose en gardant les résultats sur Google Drive, mais le runtime
+est libéré dès que la fenêtre se ferme ou que la machine se met en veille (sauf abonnement Pro+). Utile pour une
+vérification courte, pas pour la campagne.
 
 **Sur une machine à GPU.** Installer PyTorch avec l'extra `train` (§2), puis, dans l'ordre :
 
@@ -569,9 +575,10 @@ flou_wm/
 │   ├── human_review.py        relecture manuelle, A/B     lint_names.py  vérification statique des noms
 │   ├── filmstrip.py           bandes d'images imaginées sur k pas (illustrations ; PyTorch, jamais exécuté)
 │   ├── training_curves.py     courbes d'entraînement et alerte de surapprentissage (NumPy ; code de sortie non nul si alerte)
-│   └── (PyTorch, jamais exécutés) smoke_test.py, train.py, evaluate.py, train_probe.py, run_plan.py, evaluate_decision.py
+│   └── (PyTorch) smoke_test.py, train.py, evaluate.py, run_plan.py ont tourné sur T4 ; train_probe.py, evaluate_decision.py non
 ├── tests/                     265 tests (jeu, bots, données, instruments, analyse, extension « décision », outils humains, scripts)
-├── notebooks/flou_colab.ipynb déroule le projet sur Colab (non exécuté)
+├── notebooks/flou_kaggle.ipynb la campagne sur Kaggle (voie retenue : exécution en arrière-plan)
+├── notebooks/flou_colab.ipynb le même déroulé sur Colab (premier entraînement réel, puis abandonné : J8)
 ├── data/  runs/  reports/     jeux générés, entraînements, résultats (vides à la livraison, ignorés par git)
 ```
 

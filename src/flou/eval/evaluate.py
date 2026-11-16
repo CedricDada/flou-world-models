@@ -13,7 +13,7 @@ autre), puis on mesure :
 
 Deux lectures de la MSE, pourquoi : contre l'image tirée (« réalisée »), un modèle qui devinerait la
 branche passerait SOUS le plancher (fuite d'information) ; mais ce rapport est bruité (≈ 3 % à
-N = 1 000, p = 0,3), si bien qu'un régresseur parfait passe sous 1,00 une fois sur trois. En espérance
+N = 1 000, p = 0,3), si bien qu'un régresseur parfait passe sous 1,00 une fois sur deux. En espérance
 sur les deux branches (p||ŷ-A||² + (1-p)||ŷ-B||²), le bruit d'étiquette disparaît et le rapport vaut
 exactement 1 + ||ŷ-m||²/plancher : il mesure le seul sous-apprentissage. On rapporte les deux.
 """

@@ -18,6 +18,10 @@ import numpy as np
 
 from . import stats as S
 
+# Comparaisons simultanées du cœur fixées avant les runs (docs/DECISIONS.md, C4 : H1, H2a, H3a).
+# Bonferroni : 3,23 s (non apparié, H3a) et 4,42 s_d (apparié, H2a) à 3 graines.
+K_CORE = 3
+
 FAMILY_ORDER = ("regression", "diffusion", "tokens", "oracle")
 FAMILY_LABEL = {"regression": "A. Régression", "diffusion": "B. Diffusion (EDM)", "tokens": "C. Jetons",
                 "oracle": "Régresseur oracle"}
@@ -186,7 +190,7 @@ def verdicts(recs: list[dict], instrument: dict | None = None, p_core: float = 0
     else:
         b1, b3 = by_seed(dif1, "blur"), by_seed(dif3, "blur")
         a, b = [b1[s] for s in seeds], [b3[s] for s in seeds]
-        cmp_ = S.compare_groups(a, b, paired=True)
+        cmp_ = S.compare_groups(a, b, paired=True, k_tests=K_CORE)
         if cmp_.diff >= 0.10 and cmp_.significant:
             status = "confirmée"
         elif cmp_.diff < 0.10:
@@ -195,7 +199,7 @@ def verdicts(recs: list[dict], instrument: dict | None = None, p_core: float = 0
             status = "non concluante"
         out["H2a"] = _verdict(status, ecart_moyen_points=100 * cmp_.diff, seuil_apparie_en_sd=cmp_.threshold,
                               ratio_en_sd=cmp_.ratio, flou_n1=a, flou_n3=b, n_graines=len(seeds),
-                              regle="confirmée si écart >= 10 points et > 2,48 s_d ; réfutée si écart < 10 points")
+                              regle="confirmée si écart >= 10 points et > 4,42 s_d (Bonferroni, k = 3) ; réfutée si écart < 10 points")
 
     # H2b : calibration à n = 3
     if not dif3:
@@ -228,7 +232,7 @@ def verdicts(recs: list[dict], instrument: dict | None = None, p_core: float = 0
         out["H3a"] = _na("moins de 2 graines à K = 64 ou à K = 1024")
     else:
         a, b = _pts(k64, "recall"), _pts(k1024, "recall")
-        cmp_ = S.compare_groups(a, b)
+        cmp_ = S.compare_groups(a, b, k_tests=K_CORE)
         if cmp_.diff < 0 and cmp_.significant:
             status = "confirmée"
         elif cmp_.diff >= 0:
@@ -240,7 +244,7 @@ def verdicts(recs: list[dict], instrument: dict | None = None, p_core: float = 0
         out["H3a"] = _verdict(status, rappel_K64=a, rappel_K1024=b, rappel_K256=_pts(k256, "recall") if k256 else None,
                               ecart_moyen=cmp_.diff, ratio_en_sd_poolees=cmp_.ratio, seuil=cmp_.threshold,
                               ordre_monotone_des_moyennes=mono,
-                              regle="confirmée si rappel(64) < rappel(1024) de plus de 2,27 écarts-types poolés")
+                              regle="confirmée si rappel(64) < rappel(1024) de plus de 3,23 écarts-types poolés (Bonferroni, k = 3)")
 
     # H3b (exploratoire) : rappel contre erreur quadratique en pixels comme prédicteur de la qualité à l'horizon 16
     tok = [r for r in recs if r["family"] == "tokens" and abs(r["p"] - p_core) < 1e-9 and r["grid"] == 8

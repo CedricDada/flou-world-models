@@ -51,14 +51,15 @@ demo:
 
 # --- Données ---
 # p = 0 : contrôles (régression et diffusion sans bifurcation) ; 0,1 / 0,3 / 0,5 : plan principal et axe p
+# 400 000 transitions d'entraînement : à 100 000, le modèle mémorisait les bifurcations (docs/JOURNAL.md, J6)
 data-train:
-	$(PY) scripts/generate_data.py --split train --p 0.0 0.1 0.3 0.5 --n-transitions 100000
+	$(PY) scripts/generate_data.py --split train --p 0.0 0.1 0.3 0.5 --n-transitions 400000
 
 data-val:
 	$(PY) scripts/generate_data.py --split val --p 0.0 0.1 0.3 0.5 --n-transitions 20000
 
 data-test:
-	$(PY) scripts/generate_data.py --split test --p 0.0 0.1 0.3 0.5 --n-bifurcations 1000
+	$(PY) scripts/generate_data.py --split test --p 0.0 0.1 0.3 0.5 --n-bifurcations 2000
 
 data: data-train data-val data-test
 

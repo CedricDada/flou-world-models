@@ -28,8 +28,9 @@ HYPOTHESES = {
 LIMITS = (
     "3 graines par cellule du cœur : un écart sous le seuil est « non concluant », jamais « pas d'effet » ; les points "
     "bruts sont donnés dans verdicts.json.",
-    "Les seuils (2,27 s non appariés ; 2,48 s_d appariés) sont des règles de décision à très peu de graines, pas des "
-    "preuves ; avec k comparaisons simultanées il faut relever le seuil (Bonferroni, voir cours chap. 7).",
+    "Les seuils sont des règles de décision à très peu de graines, pas des preuves. Le cœur compte k = 3 comparaisons "
+    "simultanées fixées avant les runs (H1, H2a, H3a ; docs/DECISIONS.md, C4) : 3,23 s non apparié (H3a), 4,42 s_d apparié (H2a) ; "
+    "l'extension (H4a, H5a) reste à 2,27 s.",
     "ρmax est réglé sur un bruit synthétique : la part « autre » dépend de ce choix (sensibilité × 0,5 / × 1 / × 2 dans "
     "instrument.json).",
     "Les axes p et la grille 16 × 16 n'ont qu'une graine : exploratoire.",

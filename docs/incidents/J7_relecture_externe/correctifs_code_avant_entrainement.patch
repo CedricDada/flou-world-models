@@ -1,0 +1,129 @@
+diff --git a/Makefile b/Makefile
+index 7830015..9921ce7 100644
+--- a/Makefile
++++ b/Makefile
+@@ -58,7 +58,7 @@ data-val:
+ 	$(PY) scripts/generate_data.py --split val --p 0.0 0.1 0.3 0.5 --n-transitions 20000
+ 
+ data-test:
+-	$(PY) scripts/generate_data.py --split test --p 0.0 0.1 0.3 0.5 --n-bifurcations 1000
++	$(PY) scripts/generate_data.py --split test --p 0.0 0.1 0.3 0.5 --n-bifurcations 2000
+ 
+ data: data-train data-val data-test
+ 
+diff --git a/README.md b/README.md
+index 8d6de3f..0f57824 100644
+--- a/README.md
++++ b/README.md
+@@ -246,7 +246,7 @@ On stocke des **états**, pas des images (le rendu se recalcule à la lecture) :
+ make data          # équivaut aux trois lignes suivantes, pour p = 0 ; 0,1 ; 0,3 ; 0,5
+ uv run scripts/generate_data.py --split train --p 0.0 0.1 0.3 0.5 --n-transitions 100000
+ uv run scripts/generate_data.py --split val   --p 0.0 0.1 0.3 0.5 --n-transitions 20000
+-uv run scripts/generate_data.py --split test  --p 0.0 0.1 0.3 0.5 --n-bifurcations 1000
++uv run scripts/generate_data.py --split test  --p 0.0 0.1 0.3 0.5 --n-bifurcations 2000
+ ```
+ 
+ `p = 0` sert aux contrôles du plan. Le jeu de **test** contient 1 000 états de bifurcation figés, communs à tous les modèles. Détails au §7.
+diff --git a/notebooks/flou_colab.ipynb b/notebooks/flou_colab.ipynb
+index f108ab8..6e2f5be 100644
+--- a/notebooks/flou_colab.ipynb
++++ b/notebooks/flou_colab.ipynb
+@@ -268,7 +268,7 @@
+    "source": [
+     "!python scripts/generate_data.py --split train --p 0.0 0.1 0.3 0.5 --n-transitions 100000\n",
+     "!python scripts/generate_data.py --split val   --p 0.0 0.1 0.3 0.5 --n-transitions 20000\n",
+-    "!python scripts/generate_data.py --split test  --p 0.0 0.1 0.3 0.5 --n-bifurcations 1000"
++    "!python scripts/generate_data.py --split test  --p 0.0 0.1 0.3 0.5 --n-bifurcations 2000   # H2b exige >= 1 000 images NETTES par graine"
+    ]
+   },
+   {
+@@ -591,7 +591,8 @@
+    "metadata": {},
+    "outputs": [],
+    "source": [
+-    "!python scripts/validate_decision.py\n",
++    "# H0f aux réglages du niveau 2 (DECISIONS.md, C7 révisé) : 32 suites, 20 parties, comme la cellule de mesure plus bas\n",
++    "!python scripts/validate_decision.py --games 20 --candidates 32\n",
+     "!python scripts/evaluate_decision.py --all"
+    ]
+   },
+diff --git a/src/flou/eval/analysis.py b/src/flou/eval/analysis.py
+index 1d6bf92..5edc90c 100644
+--- a/src/flou/eval/analysis.py
++++ b/src/flou/eval/analysis.py
+@@ -18,6 +18,10 @@ import numpy as np
+ 
+ from . import stats as S
+ 
++# Comparaisons simultanées du cœur fixées avant les runs (docs/DECISIONS.md, C4 : H1, H2a, H3a).
++# Bonferroni : 3,23 s (non apparié, H3a) et 4,42 s_d (apparié, H2a) à 3 graines.
++K_CORE = 3
++
+ FAMILY_ORDER = ("regression", "diffusion", "tokens", "oracle")
+ FAMILY_LABEL = {"regression": "A. Régression", "diffusion": "B. Diffusion (EDM)", "tokens": "C. Jetons",
+                 "oracle": "Régresseur oracle"}
+@@ -186,7 +190,7 @@ def verdicts(recs: list[dict], instrument: dict | None = None, p_core: float = 0
+     else:
+         b1, b3 = by_seed(dif1, "blur"), by_seed(dif3, "blur")
+         a, b = [b1[s] for s in seeds], [b3[s] for s in seeds]
+-        cmp_ = S.compare_groups(a, b, paired=True)
++        cmp_ = S.compare_groups(a, b, paired=True, k_tests=K_CORE)
+         if cmp_.diff >= 0.10 and cmp_.significant:
+             status = "confirmée"
+         elif cmp_.diff < 0.10:
+@@ -195,7 +199,7 @@ def verdicts(recs: list[dict], instrument: dict | None = None, p_core: float = 0
+             status = "non concluante"
+         out["H2a"] = _verdict(status, ecart_moyen_points=100 * cmp_.diff, seuil_apparie_en_sd=cmp_.threshold,
+                               ratio_en_sd=cmp_.ratio, flou_n1=a, flou_n3=b, n_graines=len(seeds),
+-                              regle="confirmée si écart >= 10 points et > 2,48 s_d ; réfutée si écart < 10 points")
++                              regle="confirmée si écart >= 10 points et > 4,42 s_d (Bonferroni, k = 3) ; réfutée si écart < 10 points")
+ 
+     # H2b : calibration à n = 3
+     if not dif3:
+@@ -228,7 +232,7 @@ def verdicts(recs: list[dict], instrument: dict | None = None, p_core: float = 0
+         out["H3a"] = _na("moins de 2 graines à K = 64 ou à K = 1024")
+     else:
+         a, b = _pts(k64, "recall"), _pts(k1024, "recall")
+-        cmp_ = S.compare_groups(a, b)
++        cmp_ = S.compare_groups(a, b, k_tests=K_CORE)
+         if cmp_.diff < 0 and cmp_.significant:
+             status = "confirmée"
+         elif cmp_.diff >= 0:
+@@ -240,7 +244,7 @@ def verdicts(recs: list[dict], instrument: dict | None = None, p_core: float = 0
+         out["H3a"] = _verdict(status, rappel_K64=a, rappel_K1024=b, rappel_K256=_pts(k256, "recall") if k256 else None,
+                               ecart_moyen=cmp_.diff, ratio_en_sd_poolees=cmp_.ratio, seuil=cmp_.threshold,
+                               ordre_monotone_des_moyennes=mono,
+-                              regle="confirmée si rappel(64) < rappel(1024) de plus de 2,27 écarts-types poolés")
++                              regle="confirmée si rappel(64) < rappel(1024) de plus de 3,23 écarts-types poolés (Bonferroni, k = 3)")
+ 
+     # H3b (exploratoire) : rappel contre erreur quadratique en pixels comme prédicteur de la qualité à l'horizon 16
+     tok = [r for r in recs if r["family"] == "tokens" and abs(r["p"] - p_core) < 1e-9 and r["grid"] == 8
+diff --git a/src/flou/eval/evaluate.py b/src/flou/eval/evaluate.py
+index 215b6b4..416ff63 100644
+--- a/src/flou/eval/evaluate.py
++++ b/src/flou/eval/evaluate.py
+@@ -13,7 +13,7 @@ autre), puis on mesure :
+ 
+ Deux lectures de la MSE, pourquoi : contre l'image tirée (« réalisée »), un modèle qui devinerait la
+ branche passerait SOUS le plancher (fuite d'information) ; mais ce rapport est bruité (≈ 3 % à
+-N = 1 000, p = 0,3), si bien qu'un régresseur parfait passe sous 1,00 une fois sur trois. En espérance
++N = 1 000, p = 0,3), si bien qu'un régresseur parfait passe sous 1,00 une fois sur deux. En espérance
+ sur les deux branches (p||ŷ-A||² + (1-p)||ŷ-B||²), le bruit d'étiquette disparaît et le rapport vaut
+ exactement 1 + ||ŷ-m||²/plancher : il mesure le seul sous-apprentissage. On rapporte les deux.
+ """
+diff --git a/src/flou/eval/report.py b/src/flou/eval/report.py
+index fc9b5d4..43a5232 100644
+--- a/src/flou/eval/report.py
++++ b/src/flou/eval/report.py
+@@ -28,8 +28,9 @@ HYPOTHESES = {
+ LIMITS = (
+     "3 graines par cellule du cœur : un écart sous le seuil est « non concluant », jamais « pas d'effet » ; les points "
+     "bruts sont donnés dans verdicts.json.",
+-    "Les seuils (2,27 s non appariés ; 2,48 s_d appariés) sont des règles de décision à très peu de graines, pas des "
+-    "preuves ; avec k comparaisons simultanées il faut relever le seuil (Bonferroni, voir cours chap. 7).",
++    "Les seuils sont des règles de décision à très peu de graines, pas des preuves. Le cœur compte k = 3 comparaisons "
++    "simultanées fixées avant les runs (H1, H2a, H3a ; docs/DECISIONS.md, C4) : 3,23 s non apparié (H3a), 4,42 s_d apparié (H2a) ; "
++    "l'extension (H4a, H5a) reste à 2,27 s.",
+     "ρmax est réglé sur un bruit synthétique : la part « autre » dépend de ce choix (sensibilité × 0,5 / × 1 / × 2 dans "
+     "instrument.json).",
+     "Les axes p et la grille 16 × 16 n'ont qu'une graine : exploratoire.",

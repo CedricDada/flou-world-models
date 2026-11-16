@@ -31,6 +31,10 @@ Trois règles, appliquées uniformément :
 | C7 | Seuils et réglages de l'extension | Confirmés ; marge de H0f vérifiée sur une seconde graine |
 | C8 | Récompense lue dans les pixels | Assumée, avec le périmètre des conclusions explicitement borné |
 
+Les **révisions datées** sont signalées en place quand elles précèdent tout entraînement (C7, réglages du
+niveau 2) et en fin de document quand elles suivent un run (volume des données d'entraînement). Le détail des
+incidents qui les ont motivées est dans le journal de bord : [`JOURNAL.md`](JOURNAL.md).
+
 ---
 
 ## C1 — Où est le « modèle du monde » ?
@@ -262,3 +266,61 @@ Une décision de ce fichier peut être révisée **avant** le premier entraînem
 Après le premier run, toute modification doit être ajoutée ici **à sa date**, avec son motif, sans effacer la décision
 précédente : c'est la seule manière de distinguer une correction d'une hypothèse ajustée aux résultats. Un seul motif est
 légitime après coup — le réglage mesure autre chose que ce qu'il annonce (règle 3) ; un seuil non atteint n'en est pas un.
+
+
+### Révision du 15 novembre 2026, après le premier run : volume des données d'entraînement
+
+**Ce qui était fixé.** Le protocole prévoyait 100 000 transitions d'entraînement par valeur de p
+(`generate_data.py --n-transitions 100000`), chiffre hérité du dossier initial et jamais interrogé. Combiné aux 34 800 pas en
+lot 64 fixés par C5, il donne 2 227 200 images vues pour 100 000 images distinctes, soit **22 passages** sur les données.
+
+**Ce qui a été observé.** Le premier run réel, `core-regression-p0.30-s0`, échoue au contrôle H0b (rapport MSE/plancher
+**1,47** contre la bande [1,00 ; 1,10]) et ne produit que 22,5 % de flou. Le diagnostic complet est dans
+[`JOURNAL.md`](JOURNAL.md), entrée J6 : la perte d'entraînement finit à **0,46 × le plancher de Bayes** — infranchissable pour
+un modèle qui ignore la branche, et il a été vérifié qu'il l'ignore — pendant que la perte de validation, après un plateau
+jusqu'au pas 18 000, monte de façon monotone à partir du pas 20 000 pour finir **49 %** au-dessus de son minimum. Le modèle a mémorisé l'issue de chaque bifurcation vue à l'entraînement.
+
+**Décision.** Le jeu d'entraînement passe à **400 000 transitions** pour les quatre valeurs de p, ce qui ramène le nombre de
+passages de 22 à **5,6**. La validation (20 000 transitions) et le test (1 000 bifurcations) sont **inchangés** : leurs flux
+aléatoires sont indépendants de celui de l'entraînement, donc rien n'est contaminé. Aucun pas, aucun lot, aucun seuil, aucune
+hypothèse n'est modifié ; C5 reste à 34 800 pas et 28 h engagées.
+
+**Motif, et sa légitimité.** C'est la règle 3, et elle seule : *on ne change un réglage que s'il mesure autre chose que ce
+qu'on croit*. À 100 000 transitions, le dispositif mesurait la capacité du réseau à mémoriser un jeu de données, pas le flou
+inhérent à la perte quadratique. Il faut en revanche assumer que ce changement va **dans le sens contraire de la règle 2** :
+il rend H1 plus facile à confirmer, puisqu'il rétablit le flou attendu de la régression. Trois garde-fous l'encadrent. Le motif
+est un **contrôle pré-enregistré qui a échoué**, pas un seuil qu'on trouvait trop sévère. Le changement s'applique
+**identiquement aux quatre familles**, donc le budget apparié reste intact. Et le run fautif est **archivé, pas supprimé**
+(`archive/core-regression-p0.30-s0_N100k/`), de sorte que la trajectoire complète reste vérifiable.
+
+**Vérification exigée avant de relancer la campagne.** Un seul run aux nouvelles données (2,7 h) doit montrer une perte de
+validation qui ne remonte plus jusqu'au pas 34 800, et un `ratio_expected` revenu dans [1,00 ; 1,10]. Tant que ces deux
+conditions ne sont pas réunies, les 28 h ne sont pas engagées.
+
+**À écrire dans le rapport.** Le premier run a été conduit à 100 000 transitions et a échoué à H0b par surapprentissage ; le
+jeu d'entraînement a été porté à 400 000 avant toute mesure comparative, et aucun verdict n'est tiré du run initial.
+
+
+### Révision du 16 novembre 2026, après le premier run : taille du jeu de test
+
+**Ce qui était fixé.** 1 000 états de bifurcation par valeur de p, et une prédiction par état.
+
+**Ce qui a été observé.** Une relecture externe du code a montré que **H2b ne pouvait structurellement pas être concluante** :
+la règle exige au moins 1 000 images *nettes* par graine, or le maximum atteignable était exactement 1 000. Toute image floue
+ou classée « autre » faisait tomber le verdict en « non concluant ». Le run archivé en comptait 2,0 % d'« autre ».
+
+**Décision.** Le jeu de test passe à **2 000 états** par valeur de p. Le seuil `min_n_h2b = 1000` est inchangé : c'est une
+exigence de précision (demi-largeur d'intervalle d'environ 0,028 sur p̂ à p = 0,3), pas un nombre arbitraire, et l'abaisser
+aurait desserré une règle pré-enregistrée.
+
+**Motif.** Règle 3 : le dispositif ne mesurait pas ce qu'il annonçait, puisqu'il rendait un verdict impossible à atteindre
+indépendamment de la qualité des modèles. Ce n'est pas un seuil jugé trop sévère, c'est une impossibilité arithmétique.
+
+**Conséquence à respecter.** ρmax est calibré sur les jeux de test : 2 000 états font 8 000 paires au lieu de 4 000, donc un
+quantile 99,5 % différent. Relancer `validate_instrument.py`, revérifier H0a, et évaluer **tous** les runs avec le même ρmax.
+Aucun entraînement n'est affecté : le jeu de test ne sert qu'à l'instrument et à l'évaluation.
+
+**Au passage, C4 est enfin appliquée.** `analysis.py` appelait `compare_groups` sans `k_tests` et utilisait donc les seuils
+k = 1. H2a et H3a reçoivent désormais k = 3, soit 4,416 s_d (apparié) et 3,234 s (non apparié). Ce n'est pas une révision mais
+la mise en conformité du code avec une décision déjà prise. Réserve à écrire dans le rapport : H1 n'étant pas un test de
+signification, k = 2 serait défendable (3,583 s_d) ; k = 3 est gardé comme choix conservateur.

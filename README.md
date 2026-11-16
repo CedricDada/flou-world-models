@@ -244,12 +244,19 @@ On stocke des **états**, pas des images (le rendu se recalcule à la lecture) :
 
 ```bash
 make data          # équivaut aux trois lignes suivantes, pour p = 0 ; 0,1 ; 0,3 ; 0,5
-uv run scripts/generate_data.py --split train --p 0.0 0.1 0.3 0.5 --n-transitions 100000
+uv run scripts/generate_data.py --split train --p 0.0 0.1 0.3 0.5 --n-transitions 400000
 uv run scripts/generate_data.py --split val   --p 0.0 0.1 0.3 0.5 --n-transitions 20000
-uv run scripts/generate_data.py --split test  --p 0.0 0.1 0.3 0.5 --n-bifurcations 1000
+uv run scripts/generate_data.py --split test  --p 0.0 0.1 0.3 0.5 --n-bifurcations 2000
 ```
 
-`p = 0` sert aux contrôles du plan. Le jeu de **test** contient 1 000 états de bifurcation figés, communs à tous les modèles. Détails au §7.
+`p = 0` sert aux contrôles du plan. Le jeu de **test** contient 2 000 états de bifurcation figés, communs à tous les modèles. Détails au §7.
+
+**Pourquoi 2 000 et non 1 000.** H2b exige au moins 1 000 images **nettes** par graine. Avec 1 000 états et une prédiction par état, ce plafond n'était atteignable que si aucune image n'était floue ni « autre » : le verdict était « non concluant » d'office. Changer ce nombre modifie ρmax, calculé sur les jeux de test : relancer `validate_instrument.py` et revérifier H0a avant toute évaluation, et évaluer tous les runs avec le même ρmax.
+
+**Pourquoi 400 000 et non 100 000.** Le premier run réel, mené à 100 000 transitions, a échoué au contrôle H0b :
+à 34 800 pas en lot 64, le modèle voyait 22 fois les mêmes données et a mémorisé l'issue de chaque bifurcation au lieu
+d'apprendre à produire le mélange. Diagnostic complet et chiffré dans [`docs/JOURNAL.md`](docs/JOURNAL.md) (J6). À 400 000,
+le nombre de passages tombe à 5,6. La validation et le test restent inchangés : leurs flux aléatoires sont indépendants.
 
 ### 3.4 Valider l'instrument (avant de mesurer le moindre modèle)
 
@@ -389,7 +396,7 @@ ou autre.
 | H0a–d | Contrôles de l'instrument : classifieur sur mélanges synthétiques (erreur < 0,05), MSE de la régression entre 1,00 et 1,10 fois le plancher de Bayes p(1−p)δ², régresseur oracle et contrôle à p = 0 : moins de 5 % de flou | l'instrument ne passe pas : on ne conclut rien |
 | H1 | Pour p ∈ [0,3 ; 0,7], la régression est floue dans plus de 50 % des cas, la diffusion à n = 3 nette dans plus de 90 % | régression floue < 30 % ou diffusion floue > 10 % |
 | H2a | n = 1 plus floue que n = 3 d'au moins 10 points (comparaison appariée) | écart < 10 points |
-| H2b | La diffusion à n = 3 reproduit p à ± 0,05 sur au moins 1 000 états | erreur ≥ 0,05 |
+| H2b | La diffusion à n = 3 reproduit p à ± 0,05 sur au moins 1 000 images nettes (jeu de test de 2 000 états) | erreur ≥ 0,05 |
 | H3a | Le rappel du petit objet baisse quand K diminue (K = 64 contre 1 024, écart > 2,3 écarts-types poolés sur 3 graines) | pas d'écart |
 | H3b | Le rappel prédit mieux la qualité à l'horizon 16 que la MSE | exploratoire, rapportée sans seuil |
 
@@ -474,19 +481,22 @@ Extension « décision » (hypothèses H4 et H5, avec les articles qui les guide
 
 *Mesures sur 1 024 parties de 100 pas, graine 0 ; ordres de grandeur, les tests n'exigent que
 l'ordre entre bots.* Les bots lisent l'état exact et n'ont aucune influence sur l'ennemi. Le
-dossier prévoit d'entraîner sur les bots aléatoire et glouton (100 000 transitions) ; les deux
+dossier prévoit d'entraîner sur les bots aléatoire et glouton (400 000 transitions, voir §3.3) ; les deux
 autres servent à diversifier ou à tester la robustesse.
 
 ## 7. Les données
 
 On stocke des **états**, pas des images : le rendu est une fonction pure de l'état, donc les
 images se calculent à la lecture. 100 000 transitions occupent environ 0,7 Mo (contre
-1,2 Go en images), et un jeu de données se relit à l'identique.
+1,2 Go en images), et un jeu de données se relit à l'identique. L'entraînement en utilise
+400 000 par valeur de p ; c'est au chargement, dans `FrameBank`, que les images sont rendues
+une fois pour toutes sur le GPU — environ 1,24 Go par tranche de 100 000 transitions, ce qui
+fixe le plafond praticable sur un T4.
 
 ```
 data/p0.30/train_random.npz   train_greedy.npz      épisodes d'entraînement par bot
 data/p0.30/val_random.npz     val_greedy.npz        épisodes de validation (flux aléatoire distinct)
-data/p0.30/test_bifurcation.npz                     1 000 états de bifurcation figés, communs à tous les modèles
+data/p0.30/test_bifurcation.npz                     2 000 états de bifurcation figés, communs à tous les modèles
 ```
 
 Contenu d'un fichier de transitions (épisodes de 100 pas, tous de même longueur) : `states`
@@ -524,6 +534,7 @@ flou_wm/
 │   ├── README.md              index des documents
 │   ├── GAME_SPEC.md           règles exactes du jeu, état, hasard, limites
 │   ├── DECISIONS.md           décisions prises avant le premier entraînement (hypothèse, décision, raisons)
+│   ├── JOURNAL.md             journal de bord : problèmes, causes, solutions, statut
 │   ├── EXPERIMENTS.md         plan des 25 runs, règles de décision, état de vérification
 │   ├── EXTENSION_DECISION.md  extension « décision » : H4, H5, articles qui les guident, mesures sans modèle
 │   ├── cours/                 cours préparatoire (PDF, .tex, figures, recalcul des nombres)
@@ -557,6 +568,7 @@ flou_wm/
 │   ├── analyze.py             verdicts, tables, figures   dry_run.py   répétition générale simulée
 │   ├── human_review.py        relecture manuelle, A/B     lint_names.py  vérification statique des noms
 │   ├── filmstrip.py           bandes d'images imaginées sur k pas (illustrations ; PyTorch, jamais exécuté)
+│   ├── training_curves.py     courbes d'entraînement et alerte de surapprentissage (NumPy ; code de sortie non nul si alerte)
 │   └── (PyTorch, jamais exécutés) smoke_test.py, train.py, evaluate.py, train_probe.py, run_plan.py, evaluate_decision.py
 ├── tests/                     265 tests (jeu, bots, données, instruments, analyse, extension « décision », outils humains, scripts)
 ├── notebooks/flou_colab.ipynb déroule le projet sur Colab (non exécuté)

@@ -1,8 +1,8 @@
 # Ce qu'il reste à faire
 
 État au 16 novembre 2026. Tout le code NumPy (jeu, bots, données, instruments, analyse, relecture humaine, et l'extension
-« décision » : lecteur de contact, planificateur, contrôles, verdicts) est exécuté et testé : 265 tests, 264 réussis et 1 ignoré
-faute de Gymnasium sous Linux ; 263 réussis et 2 ignorés sous Windows 11 avec `PYTHONUTF8=1` (le second ignoré est le test de
+« décision » : lecteur de contact, planificateur, contrôles, verdicts) est exécuté et testé : 272 tests, 271 réussis et 1 ignoré
+faute de Gymnasium sous Linux ; 270 réussis et 2 ignorés sous Windows 11 avec `PYTHONUTF8=1` (le second ignoré est le test de
 pseudo-terminal, réservé à Unix). **Sans `PYTHONUTF8=1`, 6 tests échouent sous Windows** : voir le bloc D. Le code PyTorch tourne désormais, et **le premier résultat est acquis** : `core-regression-p0.30-s0` est entraîné et évalué,
 H0b réussi (MSE / plancher de Bayes 1,011) et flou 98,2 %. Un premier essai avait été rejeté pour surapprentissage et les
 données portées de 100 000 à 400 000 transitions (`docs/JOURNAL.md`, J6). **Les 11 autres runs prioritaires restent à

@@ -13,9 +13,11 @@ La question scientifique : quand le futur d'une scène peut prendre deux formes,
 la prédit-il floue (une moyenne des deux), nette mais fausse, ou nette *et* bien répartie entre les deux ? Le jeu sert à poser
 cette question avec une réponse exacte connue d'avance (§1.5 et §4).
 
-> **État honnête.** Tout ce qui est en NumPy est exécuté et testé (265 tests). Le code PyTorch des modèles et de l'entraînement
-> est écrit mais **n'a jamais été exécuté** (PyTorch n'était pas installable là où il a été écrit) ; **aucun entraînement n'a été
-> fait**, donc aucun résultat scientifique n'existe encore. Détails au §5.
+> **État honnête.** Tout ce qui est en NumPy est exécuté et testé (272 tests). Le code PyTorch des modèles et de l'entraînement
+> a tourné sur Tesla T4 (Kaggle) : test de fumée entièrement `[OK]`, et 5 des 12 entraînements prioritaires sont terminés et
+> évalués (régression s0 et s1, diffusion s0 et s1, jetons s0). **Aucune hypothèse comparant les familles n'est encore
+> tranchée** : H1 à H3 exigent les trois familles sur trois graines. Le récit des incidents est dans `docs/JOURNAL.md` ;
+> certains passages du §5 décrivent encore l'état d'avant le premier entraînement.
 
 ![Rendu contrefactuel : l'état, les deux futurs possibles A et B, et leur mélange pondéré](docs/img/contrefactuel.png)
 
@@ -208,7 +210,7 @@ avec un code non nul, ce qui ressemble à tort à un contrôle échoué.
 | Étape | Avec `make` | Commande (sans `make`) | Où | Durée mesurée | Ce que ça produit |
 |---|---|---|---|---|---|
 | 3.1 Jouer | `make play` | `uv run scripts/play.py` | CPU | — | une partie dans le terminal |
-| 3.2 Tester | `make test` | `uv run pytest` | CPU | ≈ 3,5 min | 265 tests (1 ignoré sans Gymnasium) |
+| 3.2 Tester | `make test` | `uv run pytest` | CPU | ≈ 3,5 min | 272 tests (2 ignorés ici : Gymnasium absent, pseudo-terminal) |
 | 3.3 Données | `make data` | voir 3.3 | CPU | 2 s | `data/p*/` : entraînement, validation, test |
 | 3.4 Instrument | `make validate` | `uv run scripts/validate_instrument.py` | CPU | 53 s | `reports/instrument.json` : ρmax et contrôle H0a |
 | 3.4 bis Extension « décision » | `make validate-decision` | `uv run scripts/validate_decision.py` | CPU | 5 à 15 min | `reports/decision_instrument.json` : contrôles H0e et H0f |
@@ -577,8 +579,9 @@ flou_wm/
 │   ├── training_curves.py     courbes d'entraînement et alerte de surapprentissage (NumPy ; code de sortie non nul si alerte)
 │   ├── where_other.py         diagnostic EXPLORATOIRE : où tombe l'écart des images « autre » (NumPy ; J9)
 │   ├── sigma_sweep.py         diagnostic EXPLORATOIRE : un pas d'Euler depuis plusieurs σ (PyTorch ; J9)
+│   ├── ideal_sigma_reference.py  ce que ferait un débruiteur EXACT, un pas depuis du bruit pur : la référence du balayage (NumPy ; J10)
 │   └── (PyTorch) smoke_test.py, train.py, evaluate.py, run_plan.py ont tourné sur T4 ; train_probe.py, evaluate_decision.py non
-├── tests/                     265 tests (jeu, bots, données, instruments, analyse, extension « décision », outils humains, scripts)
+├── tests/                     272 tests (jeu, bots, données, instruments, analyse, extension « décision », outils humains, scripts)
 ├── notebooks/flou_kaggle.ipynb la campagne sur Kaggle (voie retenue : exécution en arrière-plan)
 ├── notebooks/flou_colab.ipynb le même déroulé sur Colab (premier entraînement réel, puis abandonné : J8)
 ├── data/  runs/  reports/     jeux générés, entraînements, résultats (vides à la livraison, ignorés par git)
@@ -605,9 +608,9 @@ flou_wm/
 
 ## 10. Tests et débit
 
-`make test` : 265 tests (≈ 3,5 min sur 2 cœurs Linux ; ≈ 12 min mesurées sous Windows 11, où chaque test de script paie le
+`make test` : 272 tests (≈ 3,5 min sur 2 cœurs Linux ; ≈ 12 min mesurées sous Windows 11, où chaque test de script paie le
 démarrage d'un interpréteur ; dont environ une minute pour préparer les runs simulés de l'analyse ;
-264 exécutés sans Gymnasium, et les 6 tests qui vérifient le message « PyTorch est requis » sont ignorés si PyTorch est installé).
+271 exécutés sans Gymnasium, et les 6 tests qui vérifient le message « PyTorch est requis » sont ignorés si PyTorch est installé).
 **Sous Windows : `PYTHONUTF8=1 uv run pytest`** donne 263 réussis et 2 ignorés (Gymnasium, et le test de pseudo-terminal réservé à
 Unix) ; sans ce réglage, 6 tests échouent sur un `UnicodeEncodeError` d'affichage (§3, §3.8).
 
@@ -648,7 +651,7 @@ de paramètres et la comptabilité des connexions du U-Net. Il faut s'attendre �
 exécution ; `scripts/smoke_test.py` est fait pour les révéler en quelques minutes. Aucune durée d'entraînement n'a été mesurée et
 aucun résultat scientifique n'existe. Le lecteur de touches **interactif** n'a été testé que sur Unix (Linux) : le chemin
 Windows (`msvcrt`) n'a pas tourné. Le reste du jeu, lui, a tourné sous Windows 11 (Python 3.12) avec `PYTHONUTF8=1` : partie
-complète menée par un bot, touches envoyées par un tube, et les 265 tests. Le rendu dans Terminal.app de macOS n'a pas été vu
+complète menée par un bot, touches envoyées par un tube, et les 272 tests. Le rendu dans Terminal.app de macOS n'a pas été vu
 (d'où l'option `--colors 256`). L'enveloppe `MiniGameEnv` respecte l'interface Gymnasium (`reset(seed=, options=)`
 renvoie `(obs, info)`, `step` renvoie cinq valeurs). Elle a d'abord été testée sans Gymnasium, absent de l'environnement de
 développement ; depuis le 15 novembre 2026, le test `check_env` a **réellement tourné** sur Colab (Gymnasium 1.4, Python 3.13) et

@@ -7,20 +7,39 @@ Déclaré dans `docs/DECISIONS.md` (révision du 17 novembre 2026) à la suite d
 La question. Le cours attend d'un échantillon en un pas qu'il soit D(x ; σmax), c'est-à-dire la
 moyenne conditionnelle : une image floue, α̂ ≈ p, ρ ≈ 0, MSE ≈ 1 fois le plancher de Bayes. Mesuré,
 on obtient tout autre chose : 100 % d'images « autre » et une MSE à 2,1 fois le plancher, sur les
-deux graines. L'explication proposée est que σmax = 80 n'a presque jamais été vu à l'entraînement —
-σ y suit une loi log-normale (P_mean = −1,2, P_std = 1,2), ce qui donne 4 exemples au-dessus de 80 et
-525 au-dessus de 20, sur 2 227 200. Le préconditionnement d'EDM va dans le même sens : à σ = 80,
-c_in ≈ 1/80 et c_skip ≈ 4·10⁻⁵, donc le réseau ne reçoit presque que du bruit.
+deux graines. Explication proposée : σmax = 80 n'a presque jamais été vu à l'entraînement — σ y suit
+une loi log-normale (P_mean = −1,2, P_std = 1,2), ce qui donne 4 exemples au-dessus de 80 et 525
+au-dessus de 20, sur 2 227 200.
 
-Ce script teste cette explication sans réentraîner : si elle est juste, un pas depuis un σ **bien
-couvert** à l'entraînement (1 à 5) doit redonner le comportement attendu — flou élevé, α̂ resserré
-autour de p, ρ petit — et la dégradation doit apparaître progressivement en montant vers 80.
+COMMENT LIRE LE RÉSULTAT. Pas contre « flou élevé à tout σ », qui est faux même pour un débruiteur
+EXACT. Le pas part de x = σ·n, du bruit pur ; l'a posteriori sur {A, B} a un logit d'écart-type
+‖A − B‖/σ ≈ 15/σ. Dès que σ < ‖A − B‖, le bruit seul tranche la branche et l'image sort NETTE (A ou
+B), avec ρ = 0. Le flou n'apparaît qu'aux grands σ. La référence, à comparer ligne à ligne :
 
-Écrit `runs/<run>/sigma_sweep.json`. Sans effet sur `eval.json`.
+        σ     1     2     5    10    20    30    40    60    80
+    floue   7 %  14 %  34 %  56 %  76 %  86 %  92 %  98 %  99,8 %
+    α̂ p5   0,00  0,00 0,003 0,034 0,109 0,158 0,187 0,221  0,239
+    α̂ p95  1,00  1,00 0,985 0,842 0,600 0,496 0,444 0,394  0,370
+
+(`uv run scripts/ideal_sigma_reference.py`, NumPy seul ; « autre » vaut 0 à tout σ par construction.) Ce
+qui sépare le réseau de cette référence est donc le grain (ρ élevé) et la dispersion de α̂.
+
+PRUDENCE SUR LES σ PETITS. Le réseau a été entraîné sur « image + σ·bruit », et les images cibles ont
+une moyenne de −0,77 par pixel. Un bruit pur à σ = 1 s'en écarte de 85 écarts-types sur la moyenne,
+à σ = 10 de 8,5, à σ = 20 de 4, à σ = 80 de 1. Le point de départ n'est dans la loi d'entraînement
+qu'à σ ≳ 40, là où il y a 51 exemples (σ ≥ 40) ou 4 (σ ≥ 80), contre 21 400 à σ ≥ 5. Un mauvais
+résultat à σ ≤ 10 ne dirait donc pas « σ mal couvert » : il peut venir du point de départ.
+
+Observation à regarder, sans en faire une conclusion : le α̂ mesuré à n = 1 va de 0,03 à 0,86
+(5e–95e centiles, J9), ce que le débruiteur exact donne à σ ≈ 10 (0,034–0,842) et non à σ = 80.
+
+Écrit `runs/<run>/sigma_sweep.json`. Sans effet sur `eval.json`. **Idempotent** : un run qui a déjà son
+`sigma_sweep.json` est sauté, sauf avec `--force` (les deux interrupteurs du notebook peuvent donc rester
+allumés d'une session à l'autre).
 
 Exemples
     uv run scripts/sigma_sweep.py --run-id core-diffusion-p0.30-s0
-    uv run scripts/sigma_sweep.py --all --sigmas 1 2 5 10 20 80
+    uv run scripts/sigma_sweep.py --all --sigmas 1 2 5 10 20 30 40 60 80
 """
 import _bootstrap
 
@@ -43,11 +62,13 @@ def main() -> None:
     ap.add_argument("--data", type=Path, default=Path("data"))
     ap.add_argument("--instrument", type=Path, default=Path("reports/instrument.json"))
     ap.add_argument("--rho-max", type=float, default=None)
-    ap.add_argument("--sigmas", type=float, nargs="+", default=[1.0, 2.0, 5.0, 10.0, 20.0, 80.0])
+    ap.add_argument("--sigmas", type=float, nargs="+",
+                    default=[1.0, 2.0, 5.0, 10.0, 20.0, 30.0, 40.0, 60.0, 80.0])
     ap.add_argument("--n-states", type=int, default=0, help="0 : tout le jeu de test ; sinon les N premiers états")
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--no-amp", action="store_true")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--force", action="store_true", help="refaire un balayage déjà écrit")
     args = ap.parse_args()
 
     if args.rho_max is not None:
@@ -74,6 +95,10 @@ def main() -> None:
         d = args.runs / rid
         if not (d / "final.pt").exists():
             print(f"{rid} : pas de final.pt, ignoré")
+            continue
+        sortie = d / "sigma_sweep.json"
+        if sortie.exists() and not args.force:
+            print(f"{rid} : balayage déjà fait ({sortie.name}), sauté (--force pour refaire)")
             continue
         spec, model = load_run(d, args.device)
         if spec.family != "diffusion":
@@ -108,7 +133,6 @@ def main() -> None:
             print(f"{sigma:>7.3g} {ligne['floue']:>6.1%} {ligne['autre']:>6.1%} {ligne['nettes']:>6.1%}"
                   f" {ligne['alpha_mean']:>12.3f} {p5:>7.3f}-{p95:<8.3f} {ligne['rho_median']:>11.3f}"
                   f" {ligne['ratio_expected']:>13.2f}")
-        sortie = d / "sigma_sweep.json"
         sortie.write_text(json.dumps({"run_id": rid, "p": spec.p, "rho_max": rho_max,
                                       "n_states": len(bset), "exploratoire": True,
                                       "lecture": "un pas d'Euler depuis chaque sigma ; aucun verdict n'en depend",

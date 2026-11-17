@@ -18,6 +18,50 @@ Les décisions de protocole, elles, vivent dans [`DECISIONS.md`](DECISIONS.md) :
 
 ---
 
+## J10 — Relecture du commit 61dfcc6 avant la session 3 : un garde-fou troué, une prédiction fausse
+
+**17 novembre 2026.** Le même agent externe a relu le commit `61dfcc6` (règle de pente, mesure au rail, balayage de σ) avant
+qu'on engage dix heures de GPU. Sa note est conservée telle quelle dans
+[`incidents/J10_relecture_avant_session3/`](incidents/J10_relecture_avant_session3/). Trois points, tous vérifiés
+indépendamment avant d'être appliqués.
+
+**1. Le garde-fou « Dataset périmé » ne couvrait pas le cas qui allait se présenter.** Il ne levait l'erreur que si
+`core-regression-p0.30-s0` n'était pas évalué. Or le notebook exporté portait dans ses métadonnées une **version précise** du
+Dataset (`sourceId` 22284860), celle de la session 2, dont l'état ne contenait qu'un run évalué : une session 3 lancée sans
+« mise à jour de l'entrée » aurait passé le garde-fou et refait les runs 2 à 5, soit environ 10 h de GPU perdues.
+**Solution :** compter les `eval.json` contre `MIN_EVALUATED` (5 aujourd'hui), à relever après chaque session — la dernière
+ligne de la session affiche la valeur à saisir. Le notebook versionné n'épingle plus aucune version de Dataset.
+Testé sur un état à 1 run (erreur levée) et sur l'état réel de la session 2 (5 runs, passe).
+
+**2. La prédiction du balayage de σ était fausse.** La docstring annonçait qu'un pas depuis un σ « bien couvert » (1 à 5)
+redonnerait du flou. Même un débruiteur exact ne le ferait pas : le pas part de bruit pur, et dès que σ < ‖A − B‖ ≈ 15 le bruit
+seul tranche la branche — image **nette**, ρ = 0. De plus, le point de départ n'est dans la loi d'entraînement qu'à σ ≳ 40 :
+il n'existe pas de σ à la fois bien couvert et dont le départ soit crédible, si bien qu'un mauvais résultat à σ ≤ 10 ne
+distingue pas « σ mal couvert » de « point de départ hors distribution ». **Solution :** la lecture de référence est fixée
+dans `DECISIONS.md` **avant** le balayage (table d'un débruiteur exact, calculée par `scripts/ideal_sigma_reference.py`, NumPy
+seul, reproduite sur 2 000 états), la plage passe à 1, 2, 5, 10, 20, 30, 40, 60, 80, et le notebook affiche la référence juste
+avant le balayage.
+
+**3. Le seuil ρmax n'est pas recalibré au rail.** Au rail, le même bruit synthétique donne un quantile à 99,5 % de ρ de 0,036 au
+lieu de 0,164 (mesuré : 0,0359 contre 0,1645 sur 300 états) : la mesure au rail est 4,6 fois plus tolérante, ses « autre » sont un
+minorant. Aucun recalibrage — la mesure reste exploratoire et comparable à J9 — mais la réserve est consignée dans `DECISIONS.md`
+et `__rho_rail` est conservé par état pour re-seuiller sans réévaluer.
+
+**Deux améliorations du même passage.** La réévaluation devient idempotente (seuls les runs sans clé `rail` sont refaits) et le
+balayage aussi (un run déjà balayé est sauté, `--force` pour refaire) : les deux interrupteurs du notebook restent allumés
+sans coût. Et les deux blocs sont désormais protégés par un `try`, parce qu'une exception dans un bloc exploratoire ne doit
+pas coûter les dix heures d'entraînement qui suivent.
+
+**Chiffres corrigés au passage.** Le calcul « α̂ de 0,26 à 0,34 » de J9 était un calcul de tête ; recalculé : 0,24 à 0,37. Et
+la durée « 17 minutes » annoncée pour les mesures du 17 novembre mélangeait du mesuré (14 minutes de réévaluation) et de
+l'estimé (le balayage, non chronométré) ; le notebook le dit désormais.
+
+**Statut : appliqué, non exécuté sur GPU.** Ce qui demande PyTorch (`sigma_sweep.py`, `evaluate.py`, l'entraînement) n'a pas
+tourné ici, ni côté agent : seule la logique du notebook a été testée hors Kaggle (syntaxe des 15 cellules de code, garde-fou,
+détection des runs à réévaluer, idempotence). La session 3 est la première exécution réelle de ces pièces.
+
+---
+
 ## J9 — Deuxième session Kaggle : une fausse alerte, et deux limites de mesure mises au jour
 
 **17 novembre 2026.** Session `STAGE = 'core_control'`, 10 h de GPU : 4 runs évalués (diffusion s0, jetons s0, régression
@@ -99,9 +143,10 @@ autre chose : 100 % « autre », MSE ≈ 2,1 fois le plancher.
 exemples, **4** avaient σ ≥ 80 et **525** avaient σ ≥ 20 (recalculé : P(σ ≥ 80) = 1,65·10⁻⁶). Le débruiteur n'a donc
 pratiquement pas appris à σmax = 80, et sa sortie n'y est pas la moyenne conditionnelle. Le mécanisme est cohérent avec le
 préconditionnement d'EDM : à σ = 80, c_in ≈ 1/80 et c_skip ≈ 4·10⁻⁵, donc l'entrée du réseau est du bruit presque pur et sa
-réponse dépend du tirage. Le débruiteur exact ferait varier α̂ très peu d'un tirage à l'autre : environ 0,26 à 0,34, d'après le
-rapport ‖A−B‖/σ ≈ 14/80 à l'échelle du modèle (calcul de l'agent, non revérifié). À n ≥ 3, les pas suivants corrigent ce
-premier pas.
+réponse dépend du tirage. Le débruiteur exact ferait varier α̂ très peu d'un tirage à l'autre : de 0,24 à 0,37 (5e–95e centiles,
+recalculé sur les 2 000 états, ‖A−B‖ médiane 15,3 à l'échelle du modèle ; la première version de cette entrée
+donnait 0,26 à 0,34, un calcul de tête sur ‖A−B‖ ≈ 14). À n ≥ 3, les pas suivants corrigent ce premier pas. **Mais
+cette lecture est incomplète aux σ petits : voir J10.**
 
 **Conséquence.** H2a (n = 1 plus floue que n = 3 d'au moins 10 points) sera réfutée, pour une raison étrangère à la question
 du projet : elle mesure la couverture de σ à l'entraînement. On garde H2a telle que préenregistrée et on rapporte sa

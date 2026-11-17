@@ -394,3 +394,46 @@ classifieur sur l'image entière est ce qui a été pré-enregistré, et il rest
 *Conséquence à respecter.* Les cinq runs déjà évalués l'ont été sans cette clé. Il faut les **réévaluer**
 (`evaluate.py --force`, quelques minutes par run, aucun réentraînement) pour que les douze runs portent la même mesure,
 sinon elle ne serait disponible que sur une partie de la campagne.
+
+
+**Complément du 17 novembre, avant la session 3 : lecture de référence du balayage de σ, et une réserve sur la mesure au rail.**
+
+Une relecture du commit `61dfcc6` (J10) a montré que la docstring de `sigma_sweep.py` prédisait « flou élevé » à σ = 1 à 5,
+ce qui est **faux même pour un débruiteur exact**. La lecture du balayage est donc fixée ici, **avant** de voir ses chiffres.
+
+*Le calcul.* L'échantillonneur d'Euler part de x = σ·n, du bruit pur. Pour un débruiteur exact sur {A, B}, le poids a
+posteriori de A a un logit d'écart-type ‖A − B‖/σ, avec ‖A − B‖ ≈ 15,3 à l'échelle du modèle ([−1, 1]). Tant que σ < ‖A − B‖,
+le bruit seul tranche la branche : l'image sort **nette**, avec ρ = 0. Le flou n'existe qu'aux grands σ. Référence calculée
+par `scripts/ideal_sigma_reference.py` (NumPy seul), p = 0,3, 2 000 états, 40 tirages de bruit par état :
+
+| σ | floue | nettes | α̂ p5 – p95 | autre |
+|---|---|---|---|---|
+| 1 | 7,1 % | 92,9 % | 0,000 – 1,000 | 0 |
+| 2 | 14,4 % | 85,6 % | 0,000 – 1,000 | 0 |
+| 5 | 33,8 % | 66,2 % | 0,003 – 0,985 | 0 |
+| 10 | 56,4 % | 43,6 % | 0,034 – 0,842 | 0 |
+| 20 | 75,9 % | 24,1 % | 0,109 – 0,600 | 0 |
+| 30 | 85,6 % | 14,4 % | 0,158 – 0,496 | 0 |
+| 40 | 92,3 % | 7,7 % | 0,187 – 0,444 | 0 |
+| 60 | 98,4 % | 1,6 % | 0,221 – 0,394 | 0 |
+| 80 | 99,8 % | 0,2 % | 0,239 – 0,370 | 0 |
+
+*Comment la lire.* « Autre » vaut 0 à tout σ **par construction** : toute valeur mesurée au-dessus vient du réseau (grain,
+point de départ). Ce qui sépare le réseau de cette référence, c'est le grain et la dispersion de α̂, pas la présence de
+flou à σ petit.
+
+*Prudence sur les σ petits.* Le réseau a été entraîné sur « image + σ·bruit », et les images cibles ont une moyenne de
+−0,77 par pixel. Un bruit pur à σ = 1 s'en écarte de 85 écarts-types sur la moyenne, à σ = 10 de 8,5, à σ = 20 de 4, à
+σ = 80 de 1. Le point de départ n'est dans la loi d'entraînement qu'à σ ≳ 40, où il y a 51 exemples (σ ≥ 40) ou 4 (σ ≥ 80),
+contre 21 400 à σ ≥ 5. **Un mauvais résultat à σ ≤ 10 ne dirait donc pas « σ mal couvert »** : il peut venir du point de
+départ. C'est pourquoi la plage va jusqu'à 80 avec des points intermédiaires (1, 2, 5, 10, 20, 30, 40, 60, 80).
+
+*Observation à regarder, sans en faire une conclusion.* Le α̂ mesuré à n = 1 va de 0,03 à 0,86 (5e–95e centiles, J9), ce que
+le débruiteur exact donne à σ ≈ 10 (0,034 – 0,842) et non à σ = 80 (0,239 – 0,370). Le réseau se comporterait à σ = 80 comme
+s'il voyait un bruit dix fois plus faible. Rapprochement non vérifié sur le réseau.
+
+*Réserve sur la décision 3 (mesure au rail).* La mesure au rail réutilise ρmax = 0,1599, calibré sur l'image entière. Au
+rail, le même bruit synthétique (σ = 0,01, quantile 99,5 %) donne un ρ de **0,036** au lieu de 0,164, mesuré sur 300 états de
+p = 0,3 : le rail est 4,6 fois plus tolérant que la mesure principale, ses « autre » sont donc **un minorant**. Rien n'est
+recalibré, pour que la mesure reste exploratoire et comparable aux chiffres de J9 ; mais `eval_arrays.npz` garde `__rho_rail`
+par état, de sorte qu'on peut re-seuiller après coup, sans réévaluer. À écrire dans le rapport.

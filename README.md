@@ -575,6 +575,8 @@ flou_wm/
 │   ├── human_review.py        relecture manuelle, A/B     lint_names.py  vérification statique des noms
 │   ├── filmstrip.py           bandes d'images imaginées sur k pas (illustrations ; PyTorch, jamais exécuté)
 │   ├── training_curves.py     courbes d'entraînement et alerte de surapprentissage (NumPy ; code de sortie non nul si alerte)
+│   ├── where_other.py         diagnostic EXPLORATOIRE : où tombe l'écart des images « autre » (NumPy ; J9)
+│   ├── sigma_sweep.py         diagnostic EXPLORATOIRE : un pas d'Euler depuis plusieurs σ (PyTorch ; J9)
 │   └── (PyTorch) smoke_test.py, train.py, evaluate.py, run_plan.py ont tourné sur T4 ; train_probe.py, evaluate_decision.py non
 ├── tests/                     265 tests (jeu, bots, données, instruments, analyse, extension « décision », outils humains, scripts)
 ├── notebooks/flou_kaggle.ipynb la campagne sur Kaggle (voie retenue : exécution en arrière-plan)

@@ -22,7 +22,7 @@ from __future__ import annotations
 import numpy as np
 
 from ..data.dataset import BifurcationSet
-from .classifier import CLASS_A, CLASS_B, CLASS_NAMES, EPS, alpha_rho, as_float, classify
+from .classifier import CLASS_A, CLASS_B, CLASS_NAMES, EPS, alpha_rho, alpha_rho_rail, as_float, classify
 from .predictors import Batch, Predictor, to_uint8
 from .recall import (block_edge_excess, gem_hallucination, gem_recall, off_palette_fraction)
 from .stats import p_hat, proportion
@@ -70,6 +70,23 @@ def evaluate_predictor(pred: Predictor, bset: BifurcationSet, rho_max: float, *,
 
     n_a, n_b = int((lab == CLASS_A).sum()), int((lab == CLASS_B).sum())
     counts = {name: int((lab == i).sum()) for i, name in enumerate(CLASS_NAMES)}
+
+    # --- mesure EXPLORATOIRE, déclarée dans DECISIONS.md (17 novembre 2026, à la suite de J9) ---
+    # Le même classifieur, restreint aux pixels où A et B diffèrent. Elle ne remplace rien : tous
+    # les verdicts se calculent sur les étiquettes `lab` ci-dessus. Elle dit seulement si une image
+    # classée « autre » l'est à cause de la bifurcation ou à cause du reste de l'image.
+    alpha_r, rho_r = alpha_rho_rail(imgs, a, b)
+    lab_r = classify(alpha_r, rho_r, rho_max, eps)
+    n_a_r, n_b_r = int((lab_r == CLASS_A).sum()), int((lab_r == CLASS_B).sum())
+    counts_r = {name: int((lab_r == i).sum()) for i, name in enumerate(CLASS_NAMES)}
+    rail = {"exploratoire": True,
+            "lecture": "classifieur restreint au rail de la bifurcation (J9) ; aucun verdict n'en dépend",
+            "counts": counts_r,
+            "blur": proportion(counts_r["floue"], N, conf).as_dict(),
+            "other": proportion(counts_r["autre"], N, conf).as_dict(),
+            "sharp": proportion(n_a_r + n_b_r, N, conf).as_dict(),
+            "p_hat": p_hat(n_a_r, n_b_r, conf).as_dict(),
+            "alpha_mean": float(np.nanmean(alpha_r))}
     blur = proportion(counts["floue"], N, conf)
     other = proportion(counts["autre"], N, conf)
     sharp = proportion(n_a + n_b, N, conf)
@@ -105,6 +122,7 @@ def evaluate_predictor(pred: Predictor, bset: BifurcationSet, rho_max: float, *,
         "p_hat": ph.as_dict(), "p_abs_err": abs(ph.value - p) if ph.n else float("nan"),
         "p_hat_covers_p": bool(ph.lo <= p <= ph.hi) if ph.n else False,
         "alpha_mean": float(np.nanmean(alpha)),
+        "rail": rail,
         "mse": {"sq_err_realized": float(sq_real.mean()), "sq_err_expected": float(sq_exp.mean()),
                 "bayes_floor": fl, "ratio_realized": ratio_real, "ratio_expected": ratio_exp,
                 "ratio_realized_se": se_real,
@@ -114,6 +132,7 @@ def evaluate_predictor(pred: Predictor, bset: BifurcationSet, rho_max: float, *,
         "off_palette": float(off.mean()), "off_palette_truth": float(off_true.mean()),
         "block_edge_excess": float(blk.mean()), "block_edge_excess_truth": float(blk_true.mean()),
         "per_sample": {"label": lab, "alpha": alpha, "rho": rho, "state": sidx,
+                       "label_rail": lab_r, "alpha_rail": alpha_r, "rho_rail": rho_r,
                        "recall": rec, "sq_err_realized": sq_real},
     }
     if keep_images:

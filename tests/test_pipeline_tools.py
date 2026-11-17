@@ -385,3 +385,40 @@ def test_run_plan_checks_pytorch_before_anything_else(tmp_path):
     r = run_script("run_plan.py", "--groups", "core", "--no-eval", "--data", tmp_path / "data", cwd=tmp_path)
     assert r.returncode != 0 and "PyTorch est requis" in (r.stdout + r.stderr)
     assert not (tmp_path / "runs").exists()
+
+
+# --------------------------------------------- Alerte de surapprentissage : la règle de pente (J9)
+def _training_curves():
+    """Charge scripts/training_curves.py comme module (il n'est pas dans le paquet)."""
+    chemin = Path(__file__).resolve().parents[1] / "scripts" / "training_curves.py"
+    sys.path.insert(0, str(chemin.parent))
+    try:
+        spec = importlib.util.spec_from_file_location("training_curves_test", chemin)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+    finally:
+        sys.path.remove(str(chemin.parent))
+    return mod
+
+
+def test_slope_rule_flags_a_rising_validation_curve():
+    tc = _training_curves()
+    pts = [(2000 * (i + 1), 0.0008 * np.exp(0.02 * i)) for i in range(18)]      # hausse franche
+    b, t = tc.pente_log(pts)
+    assert b > 0 and t > 3
+
+
+def test_slope_rule_ignores_a_single_noisy_last_point():
+    """Le cas de J9 : la validation descend, mais le dernier relevé fait un bond de +30 %."""
+    tc = _training_curves()
+    pts = [(2000 * (i + 1), 0.0010 * np.exp(-0.05 * i)) for i in range(17)]
+    pts.append((36000, pts[-1][1] * 1.30))
+    b, t = tc.pente_log(pts)
+    assert b < 0                                   # la tendance de fond descend toujours
+    hausse = (pts[-1][1] - min(v for _, v in pts)) / min(v for _, v in pts)
+    assert hausse > 0.10                           # l'ancienne règle, elle, aurait alerté
+
+
+def test_slope_rule_stays_silent_when_there_are_too_few_points():
+    tc = _training_curves()
+    assert tc.pente_log([(1000, 0.1), (2000, 0.2), (3000, 0.4)]) == (None, 0.0)

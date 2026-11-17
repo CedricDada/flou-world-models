@@ -18,6 +18,147 @@ Les décisions de protocole, elles, vivent dans [`DECISIONS.md`](DECISIONS.md) :
 
 ---
 
+## J9 — Deuxième session Kaggle : une fausse alerte, et deux limites de mesure mises au jour
+
+**17 novembre 2026.** Session `STAGE = 'core_control'`, 10 h de GPU : 4 runs évalués (diffusion s0, jetons s0, régression
+s1, diffusion s1), plus le run de jetons s1 interrompu à 0,87 h, qui sera repris. Sauvegarde OK (`etat.zip`, 273 Mo).
+**5 runs sur 12 sont évalués.** L'analyse ci-dessous a été produite par un agent externe à partir des journaux téléchargés,
+puis **recontrôlée indépendamment** : les tableaux, les pentes et les parts d'énergie se reproduisent (voir « Ce qui a été
+revérifié » en fin d'entrée).
+
+### Résultats (p = 0,3, ρmax = 0,1599, 2 000 états de test)
+
+| Run | floue | autre | nettes | p̂ [IC 95 %] | MSE / plancher |
+|---|---|---|---|---|---|
+| régression s0 | 98,2 % | 1,4 % | 0,4 % | — | 1,011 (H0b réussi) |
+| régression s1 | 96,7 % | 1,4 % | 1,9 % | — | 1,016 (H0b réussi) |
+| diffusion s0, n = 1 | 0 % | **100 %** | 0 % | — | 2,09 |
+| diffusion s0, n = 3 | 4,4 % | 4,3 % | 91,2 % | 0,327 [0,306 ; 0,349] | 2,04 |
+| diffusion s0, n = 20 | 0 % | 3,8 % | 96,2 % | 0,324 [0,303 ; 0,345] | 2,10 |
+| diffusion s1, n = 1 | 0 % | **100 %** | 0 % | — | 2,12 |
+| diffusion s1, n = 3 | 5,4 % | 5,5 % | 89,1 % | 0,255 [0,235 ; 0,276] | 1,90 |
+| diffusion s1, n = 20 | 0 % | 3,4 % | 96,7 % | 0,250 [0,231 ; 0,270] | 1,96 |
+| jetons s0, τ = 1 | 0 % | **51,8 %** | 48,2 % | 0,258 [0,231 ; 0,287] | 3,40 |
+
+Le rapport MSE / plancher vaut environ 2 pour la diffusion, n ≥ 3. C'est la valeur attendue d'un échantillonneur qui tire une
+branche indépendamment de la vraie issue : 2p(1−p)δ² (Blau et Michaeli, 2018). La régression est à 1,0. Le cas jouet
+prévoyait p̂ ≈ 0,19 à n = 3 (biais de discrétisation) ; le biais observé est bien plus faible, avec une variation d'une graine
+à l'autre (0,327 et 0,255).
+
+**Piège de lecture.** Le champ `chk_h0b` de chaque `eval.json` vaut « échoué » pour la diffusion et les jetons. C'est normal
+et sans conséquence : H0b demande un rapport dans [1,00 ; 1,10], ce qui n'a de sens que pour un prédicteur de la moyenne, et
+`analyze.py` ne calcule le verdict H0b **que sur les runs de régression du cœur** (`analysis.py`, sélection `family="regression"`).
+En revanche, la fonction `report_run` du notebook Kaggle affiche « H0b ÉCHOUÉ » pour ces runs, ce qui est trompeur : à corriger
+pour n'évaluer H0b que sur la régression et l'oracle.
+
+### 1. L'alerte de surapprentissage sur `core-diffusion-p0.30-s0` est une fausse alerte
+
+`training_curves.py` a signalé « val_loss remontée de +30,2 % depuis son minimum (pas 34 000) ». La règle compare le
+**dernier** point de validation au minimum. Pour la régression, la validation est lisse, et la règle a bien détecté J6.
+Pour la diffusion, la validation fluctue fortement d'un point à l'autre, même à bruit fixe (`fixed_noise`), car les poids
+eux-mêmes varient :
+- s0 : +101 % au pas 14 000 (0,00140 → 0,00282), puis la baisse reprend ;
+- s1 : +80 % au pas 32 000, puis 0,000375 au pas 34 000.
+
+Le +30 % final de s0 est un point de ce bruit. Une régression linéaire de log(val) sur la seconde moitié de l'entraînement
+tranche nettement. Les deux colonnes de droite sont un recalcul indépendant, avec un découpage de la seconde moitié
+légèrement différent : les valeurs bougent, la conclusion non.
+
+| Run | pente (agent) | t (agent) | pente (contrôle) | t (contrôle) |
+|---|---|---|---|---|
+| J6 (100 000 transitions, surapprentissage avéré) | **+0,228** | **+12,9** | **+0,214** | **+10,7** |
+| diffusion s0 | −0,425 | −5,2 | −0,399 | −3,9 |
+| diffusion s1 | −0,361 | −2,2 | −0,341 | −1,6 |
+| régression s0 | −0,002 | −0,9 | −0,001 | −0,3 |
+| régression s1 | −0,001 | −0,2 | −0,003 | −0,5 |
+| jetons s0 (gpt / vq) | −0,180 / −1,049 | −9,0 / −2,5 | identique | identique |
+| jetons s1 (gpt / vq) | −0,301 / −2,050 | −16,0 / −4,6 | identique | identique |
+
+Pentes par 10 000 pas. La validation de la diffusion s0 **baisse encore** en fin d'entraînement : c'est l'inverse d'un
+surapprentissage. Les mesures d'évaluation (p̂ calibré, MSE ≈ 2 fois le plancher) ne montrent rien d'anormal. Décision : la
+campagne continue.
+
+**Correctif proposé pour `scripts/training_curves.py`.** Lever l'alerte quand la pente de log(val) sur la seconde moitié est
+positive avec t > 3, et garder l'ancienne règle comme simple information. Sur les runs ci-dessus, la nouvelle règle signale J6
+et seulement J6. *Réserve :* le seuil t > 3 est choisi après avoir vu ces sept runs, sur 9 points de validation chacun (4 à 6
+pour les stades des jetons). C'est un garde-fou de surveillance, pas un verdict préenregistré — il ne change aucune hypothèse.
+
+### 2. La diffusion à n = 1 n'est pas « la moyenne » : 100 % « autre », sur les deux graines
+
+On attendait, d'après le cours, un échantillon en un pas égal à D(x ; σmax), c'est-à-dire la moyenne conditionnelle : une image
+floue, α̂ ≈ p, ρ ≈ 0, MSE ≈ 1 fois le plancher. C'est d'ailleurs ce qu'affirme la docstring de `karras_sigmas`. On observe
+autre chose : 100 % « autre », MSE ≈ 2,1 fois le plancher.
+- `samples_n1.png` montre l'ennemi dessiné **à moitié** aux deux positions, ce qui est bien un mélange. Mais toute l'image est
+  couverte d'un **grain** de fond, et le poids du mélange **change d'un tirage à l'autre** : α̂ va de 0,03 à 0,86 (5e et 95e
+  centiles), centré sur 0,29.
+- Sur les images conservées, 87 % de l'énergie de l'écart ‖ŷ − (α̂A + (1−α̂)B)‖² tombe hors du rail de l'ennemi et hors de
+  l'agent : c'est le grain. Restreint au rail de l'ennemi, le classement donne, sur 25 images, 14 « floue », 9 « nette-B »
+  et 2 « nette-A » pour s0 (9, 14 et 2 pour s1).
+
+**Hypothèse, à confirmer.** À l'entraînement, σ suit une loi log-normale (P_mean = −1,2, P_std = 1,2). Sur 2 227 200
+exemples, **4** avaient σ ≥ 80 et **525** avaient σ ≥ 20 (recalculé : P(σ ≥ 80) = 1,65·10⁻⁶). Le débruiteur n'a donc
+pratiquement pas appris à σmax = 80, et sa sortie n'y est pas la moyenne conditionnelle. Le mécanisme est cohérent avec le
+préconditionnement d'EDM : à σ = 80, c_in ≈ 1/80 et c_skip ≈ 4·10⁻⁵, donc l'entrée du réseau est du bruit presque pur et sa
+réponse dépend du tirage. Le débruiteur exact ferait varier α̂ très peu d'un tirage à l'autre : environ 0,26 à 0,34, d'après le
+rapport ‖A−B‖/σ ≈ 14/80 à l'échelle du modèle (calcul de l'agent, non revérifié). À n ≥ 3, les pas suivants corrigent ce
+premier pas.
+
+**Conséquence.** H2a (n = 1 plus floue que n = 3 d'au moins 10 points) sera réfutée, pour une raison étrangère à la question
+du projet : elle mesure la couverture de σ à l'entraînement. On garde H2a telle que préenregistrée et on rapporte sa
+réfutation avec cette explication. Diagnostic exploratoire proposé, à déclarer comme tel dans `DECISIONS.md` : échantillonner
+en un pas depuis σ ∈ {1, 2, 5, 10, 20, 80}, sur les débruiteurs existants, sans réentraînement.
+
+### 3. Les jetons : la moitié des images « autre » vient de l'agent, pas de la bifurcation
+
+51,8 % des images du run de jetons s0 sont classées « autre ». Les images (`samples_tau1.png`) sont nettes, mais l'**agent**
+y est souvent décalé d'un ou deux pixels, ou dédoublé au bord d'un jeton. Sur les 25 images « autre » conservées, 58 % de
+l'énergie de l'écart tombe sur l'agent. Restreint au rail de l'ennemi, le classement donne 19 images nettes (4 A, 15 B) et
+6 « autre ».
+
+C'est la limite connue du classifieur sur l'image entière, déjà mesurée sur le mélange idéal : un agent décalé d'un pixel
+donne ρ ≈ 0,39. ρ est divisé par δ, qui ne mesure que le déplacement de l'ennemi. Pour la régression, les rares « autre »
+viennent de la même façon du reste de l'image (95 % de l'énergie), et restreints au rail ils sont « floue ».
+
+**Mesure proposée (exploratoire, à déclarer avant l'analyse).** En plus du classifieur sur l'image entière, qui reste la
+mesure principale, préenregistrée, calculer α̂ et ρ restreints au rail de l'ennemi. Pixels où A et B diffèrent, dilatés de
+2 pixels. Cette mesure sépare deux questions : « la bifurcation est-elle tranchée, mélangée ou ratée ? » et « le reste de
+l'image est-il juste ? ». Un prototype NumPy existe ([`scripts/where_other.py`](../scripts/where_other.py)) ; il ne demande
+ni GPU ni réentraînement.
+
+*Base de mesure à garder en tête :* `eval_arrays.npz` ne conserve que **25 images par classe**. Les parts d'énergie et les
+reclassements ci-dessus portent donc sur 25 cas, pas sur les 2 000 états. Ils suffisent à établir l'origine de l'écart, pas à
+chiffrer une proportion.
+
+### Ce qui a été revérifié
+
+Sur les journaux et les `eval.json` téléchargés, avec un code écrit indépendamment de celui de l'agent :
+- le tableau de résultats, ligne à ligne, y compris les variantes n = 5 que l'entrée ne reprend pas ;
+- les pentes de log(val) et leurs t (colonnes « contrôle » ci-dessus) : même signe, même conclusion pour les sept runs ;
+- le dénombrement des σ vus à l'entraînement : 4 et 525, aux valeurs annoncées ;
+- les parts d'énergie et les reclassements au rail, par exécution de `where_other.py` : 87,6 % hors rail pour la diffusion
+  n = 1 (14 floue / 9 nette-B / 2 nette-A pour s0, 9 / 14 / 2 pour s1), 57,6 % sur l'agent pour les jetons (19 nettes, 6
+  autre), 94,8 % sur le reste pour la régression (25 « autre » reclassées « floue »).
+
+Deux défauts du prototype ont été corrigés au passage : les cibles par défaut employaient les clés `n1`, `n3`, `tau1` alors
+que les variantes s'appellent `n=1`, `n=3`, `tau=1` — le script annonçait « pas d'images conservées » sans rien signaler — et
+ρmax était codé en dur au lieu d'être lu dans `reports/instrument.json`.
+
+**Statut : résolu pour les trois propositions, en cours de vérification pour la campagne.** Les trois ont été retenues et
+consignées le 17 novembre dans [`DECISIONS.md`](DECISIONS.md), avant toute analyse, puis appliquées :
+
+| Proposition | Où elle vit | Vérification |
+|---|---|---|
+| Règle de pente | `scripts/training_curves.py`, option `--seuil-t` | signale J6 (pente +0,21, t = +10,7) et aucun des six runs sains ; trois tests |
+| Balayage de σ | `scripts/sigma_sweep.py` (nouveau) | écrit, **pas encore exécuté** : demande un GPU et les poids |
+| Classifieur au rail | `classifier.rail_mask` / `alpha_rho_rail`, clé `rail` de chaque `eval.json` | quatre tests, dont une image salie hors du rail qui passe de « autre » à « nette-A » |
+
+Reste à faire, dans l'ordre : réévaluer les cinq runs déjà évalués (`evaluate.py --all --force`, aucun réentraînement) pour
+qu'ils portent tous la mesure au rail, lancer le balayage de σ sur les deux runs de diffusion, puis poursuivre la campagne —
+reprise du run de jetons s1, puis régression s2, diffusion s2, jetons s2 et oracle (environ 9,5 h), les deux contrôles p = 0
+dans une dernière session. Le notebook Kaggle porte les deux interrupteurs `RUN_REEVAL` et `RUN_SIGMA_SWEEP`.
+
+---
+
 ## J8 — Colab libérait la T4 à chaque mise en veille : la campagne passe sur Kaggle
 
 **16 novembre 2026.**

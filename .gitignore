@@ -20,3 +20,6 @@ runs_dryrun/
 *.npz
 *.pt
 *.ckpt
+
+# Copie locale de l'état Kaggle (téléchargement) : le Dataset flou-wm-etat fait foi.
+flou_etat/

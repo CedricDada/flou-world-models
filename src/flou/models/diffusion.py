@@ -57,4 +57,6 @@ class EDMDenoiser(nn.Module):
 
     @torch.no_grad()
     def predict(self, ctx, action, generator=None, branch=None, n_steps: int = 3, **kw) -> torch.Tensor:
-        return self.sample(ctx, action, n_steps, generator)
+        # sigma_max, sigma_min et rho sont transmis tels quels : ils servent au balayage de σ
+        # (scripts/sigma_sweep.py, diagnostic déclaré après J9). Par défaut, rien ne change.
+        return self.sample(ctx, action, n_steps, generator, **kw)

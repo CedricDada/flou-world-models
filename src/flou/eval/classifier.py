@@ -78,6 +78,51 @@ def classify_images(yhat, A, B, rho_max: float, eps: float = EPS) -> dict:
     return {"alpha": alpha, "rho": rho, "label": classify(alpha, rho, rho_max, eps)}
 
 
+# ---------------------------------------------------------------------------------------
+# Mesure EXPLORATOIRE : le même classifieur restreint au rail de la bifurcation
+#
+# Déclarée dans DECISIONS.md (révision du 17 novembre 2026) à la suite de l'incident J9. Elle ne
+# remplace rien : les verdicts H0 à H5 restent calculés sur l'image entière, par les fonctions
+# ci-dessus. Motif : ρ est normalisé par δ, qui ne mesure que le déplacement de l'ennemi, si bien
+# qu'un agent décalé d'un pixel suffit à faire basculer une image en « autre » (ρ ≈ 0,39 sur le
+# mélange idéal) alors que la bifurcation, elle, est correctement tranchée. Restreindre le calcul
+# aux pixels où A et B diffèrent sépare deux questions : « la bifurcation est-elle tranchée,
+# mélangée ou ratée ? » et « le reste de l'image est-il juste ? ».
+# ---------------------------------------------------------------------------------------
+def dilate(mask: np.ndarray, k: int = 2) -> np.ndarray:
+    """Dilatation carrée de rayon `k` d'un masque (..., H, W).
+
+    Passe par un remplissage puis des tranches : elle ne reboucle pas d'un bord à l'autre de
+    l'image, contrairement à un décalage circulaire.
+    """
+    mask = np.asarray(mask, dtype=bool)
+    if k <= 0:
+        return mask
+    h, w = mask.shape[-2:]
+    pad = np.zeros(mask.shape[:-2] + (h + 2 * k, w + 2 * k), dtype=bool)
+    pad[..., k:k + h, k:k + w] = mask
+    out = np.zeros_like(mask)
+    for dy in range(2 * k + 1):
+        for dx in range(2 * k + 1):
+            out |= pad[..., dy:dy + h, dx:dx + w]
+    return out
+
+
+def rail_mask(A, B, k: int = 2) -> np.ndarray:
+    """Masque (..., H, W) des pixels où A et B diffèrent, dilaté de `k` pixels."""
+    return dilate(np.abs(as_float(A) - as_float(B)).sum(-1) > 1e-6, k)
+
+
+def alpha_rho_rail(yhat, A, B, k: int = 2) -> tuple[np.ndarray, np.ndarray]:
+    """(α̂, ρ) calculés sur le seul rail de la bifurcation. Mesure exploratoire, voir ci-dessus.
+
+    δ est inchangé : le rail contient par construction tous les pixels où A et B diffèrent, donc
+    ‖A − B‖ restreint au rail vaut ‖A − B‖ entier. Seul le reste ‖ŷ − projection‖ change.
+    """
+    m = rail_mask(A, B, k)[..., None]
+    return alpha_rho(as_float(yhat) * m, as_float(A) * m, as_float(B) * m)
+
+
 def class_counts(labels: np.ndarray) -> dict[str, int]:
     labels = np.asarray(labels)
     return {name: int((labels == i).sum()) for i, name in enumerate(CLASS_NAMES)}

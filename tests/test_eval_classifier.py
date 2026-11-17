@@ -201,3 +201,53 @@ def test_block_edge_excess_detects_block_artifacts():
     blocky = np.kron(rng.random((4, 8, 8, 3)), np.ones((1, 8, 8, 1)))
     assert (R.block_edge_excess(blocky, 8) > 0.05).all()            # marches aux frontières de blocs
     assert (R.block_edge_excess(blocky, 8) > R.block_edge_excess(smooth, 8)).all()
+
+
+# ---------------------------------------------------------------------------------------
+# Mesure exploratoire déclarée après J9 : le classifieur restreint au rail de la bifurcation
+# ---------------------------------------------------------------------------------------
+def test_dilate_does_not_wrap_around_the_border():
+    m = np.zeros((1, 8, 8), bool)
+    m[0, 0, 0] = True
+    out = C.dilate(m, k=2)
+    assert out[0, :3, :3].all()                      # le coin est bien dilaté
+    assert not out[0, -1, -1] and not out[0, 0, -1]  # mais rien ne reboucle de l'autre côté
+
+
+def test_rail_mask_covers_every_differing_pixel(cf):
+    a, b, _ = cf
+    fa, fb = C.as_float(a[:8]), C.as_float(b[:8])
+    diff = np.abs(fa - fb).sum(-1) > 1e-6
+    rail = C.rail_mask(fa, fb)
+    assert rail.shape == diff.shape
+    assert (rail | ~diff).all()                      # tout pixel différent est dans le rail
+    assert rail.sum() > diff.sum()                   # la dilatation élargit bien
+
+
+def test_rail_measure_ignores_an_error_outside_the_bifurcation(cf):
+    """Une image égale à A, salie LOIN du rail : « autre » sur l'image entière, « nette-A » au rail."""
+    a, b, _ = cf
+    fa, fb = C.as_float(a[0]), C.as_float(b[0])
+    rail = C.rail_mask(fa, fb)
+    hors = ~rail
+    assert hors.any()
+    rng = np.random.default_rng(0)
+    sale = fa.copy()
+    sale[hors] = np.clip(sale[hors] + rng.normal(0, 0.3, sale[hors].shape), 0, 1)
+
+    al, rho = C.alpha_rho(sale, fa, fb)
+    al_r, rho_r = C.alpha_rho_rail(sale, fa, fb)
+    assert C.classify(al, rho, 0.16) == C.CLASS_OTHER
+    assert C.classify(al_r, rho_r, 0.16) == C.CLASS_A
+    assert rho_r == pytest.approx(0.0, abs=1e-9) and al_r == pytest.approx(1.0)
+
+
+def test_rail_measure_still_sees_a_blend_on_the_rail(cf):
+    """Le mélange reste mesuré à l'identique : le rail contient toute la différence A - B."""
+    a, b, _ = cf
+    fa, fb = C.as_float(a[0]), C.as_float(b[0])
+    melange = 0.3 * fa + 0.7 * fb
+    al, rho = C.alpha_rho(melange, fa, fb)
+    al_r, rho_r = C.alpha_rho_rail(melange, fa, fb)
+    assert al_r == pytest.approx(al) and rho_r == pytest.approx(rho, abs=1e-9)
+    assert al_r == pytest.approx(0.3)

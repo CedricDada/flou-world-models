@@ -324,3 +324,73 @@ Aucun entraînement n'est affecté : le jeu de test ne sert qu'à l'instrument e
 k = 1. H2a et H3a reçoivent désormais k = 3, soit 4,416 s_d (apparié) et 3,234 s (non apparié). Ce n'est pas une révision mais
 la mise en conformité du code avec une décision déjà prise. Réserve à écrire dans le rapport : H1 n'étant pas un test de
 signification, k = 2 serait défendable (3,583 s_d) ; k = 3 est gardé comme choix conservateur.
+
+
+
+### Révision du 17 novembre 2026, après cinq runs évalués : une alerte corrigée, deux mesures exploratoires déclarées
+
+Trois décisions prises **avant** de lancer `analyze.py`, à la suite de l'incident J9
+([`JOURNAL.md`](JOURNAL.md)). Aucune ne touche à un seuil ni à un verdict pré-enregistré : la première corrige un
+instrument de surveillance, les deux autres ajoutent des mesures **déclarées exploratoires**, qui ne peuvent pas
+confirmer une hypothèse.
+
+**1. L'alerte de surapprentissage passe de « dernier point » à « tendance ».**
+
+*Ce qui était fixé.* `scripts/training_curves.py` lève une alerte si la perte de validation finit plus de 10 % au-dessus
+de son minimum.
+
+*Ce qui a été observé.* La règle a signalé `core-diffusion-p0.30-s0` (+30,2 % sur le dernier relevé) alors que la
+validation de ce run **descendait encore** : pente de log(validation) sur la seconde moitié de l'entraînement de −0,40
+par 10 000 pas, t = −3,9. La validation de la diffusion fluctue fortement d'un relevé à l'autre même à bruit fixe, les
+poids changeant entre deux relevés : +101 % au pas 14 000 pour ce même run, suivi d'une reprise de la baisse.
+
+*Décision.* L'alerte se déclenche désormais quand la **pente de log(validation) sur la seconde moitié est positive avec
+t > 3**. L'écart au minimum reste affiché, comme information. Sur les sept séries disponibles, la nouvelle règle signale
+J6 (pente +0,21, t = +10,7) et lui seul.
+
+*Motif.* Règle 3, appliquée à un instrument de surveillance et non à une hypothèse : la règle précédente mesurait le
+bruit du dernier relevé, pas la mémorisation. Elle ne protège aucun verdict — elle décide seulement si l'on s'arrête
+pour examiner un run.
+
+*Réserve à écrire dans le rapport.* Le seuil t > 3 a été choisi **après** avoir vu ces sept runs, sur 9 relevés de
+validation chacun (4 à 6 pour les stades des jetons). C'est un garde-fou, pas un test.
+
+**2. Balayage de σ sur les débruiteurs déjà entraînés (exploratoire).**
+
+*Ce qui a été observé.* La diffusion à n = 1 donne **100 % d'images « autre »** sur les deux graines, et une MSE à 2,1
+fois le plancher de Bayes, là où le cours attendait la moyenne conditionnelle D(x ; σmax) — donc du flou, α̂ ≈ p et
+ρ ≈ 0. Explication proposée : σmax = 80 n'a quasiment jamais été vu à l'entraînement (σ log-normale, P_mean = −1,2,
+P_std = 1,2 : 4 exemples au-dessus de 80 et 525 au-dessus de 20, sur 2 227 200).
+
+*Décision.* Mesurer, sans réentraîner, un pas d'Euler depuis σ ∈ {1, 2, 5, 10, 20, 80}
+(`scripts/sigma_sweep.py`, sortie `runs/<run>/sigma_sweep.json`). **H2a reste évaluée telle que préenregistrée**, sur
+n = 1 contre n = 3, et sera vraisemblablement réfutée. Le balayage sert à dire *pourquoi*, pas à changer le verdict.
+
+*Motif.* Règle 1 : le seuil pré-enregistré est gardé bien qu'on sache déjà qu'il ne sera pas franchi. La règle 3 ne
+s'applique pas, car ce n'est pas H2a qui mesure autre chose que ce qu'elle annonce — c'est l'échantillonneur à un pas
+qui ne fait pas ce que le cours en attendait. Le diagnostic est donc rapporté à part.
+
+*À écrire dans le rapport.* H2a réfutée, avec la couverture de σ à l'entraînement comme explication, et le balayage
+comme pièce. Le fait que l'écart soit prévu *avant* de lire le verdict est ce qui distingue une explication d'une
+justification après coup.
+
+**3. Classifieur restreint au rail de la bifurcation (exploratoire, mesure secondaire).**
+
+*Ce qui a été observé.* 51,8 % des images du run de jetons s0 sont classées « autre ». Elles sont nettes, mais l'agent
+y est décalé d'un ou deux pixels. Sur les 25 images conservées par classe, 58 % de l'énergie de l'écart tombe sur
+l'agent ; restreint aux pixels où A et B diffèrent, le classement donne 19 images nettes et 6 « autre ». La régression
+montre le symétrique : ses rares « autre » viennent à 95 % du reste de l'image et deviennent « floue » au rail. C'est la
+limite connue de l'instrument (cours, §2.2) : ρ est normalisé par δ, qui ne mesure que le déplacement de l'ennemi.
+
+*Décision.* `evaluate.py` calcule désormais, **en plus** de la mesure principale et sur les 2 000 états, les mêmes
+α̂, ρ et étiquettes restreints au rail (pixels où A et B diffèrent, dilatés de 2). Elles vivent sous la clé `rail` de
+chaque `eval.json`, marquée `"exploratoire": true`. **Aucun verdict n'en dépend** : H0 à H5 se calculent sur les
+étiquettes de l'image entière, inchangées.
+
+*Motif.* Règle 3 pour la seule mesure secondaire : « autre » confond aujourd'hui deux défauts de nature différente, une
+bifurcation ratée et un agent décalé. Le choix de **ne pas** remplacer la mesure principale relève de la règle 1 — le
+classifieur sur l'image entière est ce qui a été pré-enregistré, et il reste ce sur quoi les hypothèses sont tranchées.
+
+*Conséquence à respecter.* Les cinq runs déjà évalués l'ont été sans cette clé. Il faut les **réévaluer**
+(`evaluate.py --force`, quelques minutes par run, aucun réentraînement) pour que les douze runs portent la même mesure,
+sinon elle ne serait disponible que sur une partie de la campagne.

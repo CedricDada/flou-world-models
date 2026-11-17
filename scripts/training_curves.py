@@ -4,10 +4,17 @@
 Lit les `runs/<run>/log.jsonl` écrits par le trainer et répond à une seule question : **ce run
 a-t-il mémorisé son jeu d'entraînement ?** Deux symptômes sont cherchés.
 
-1. **La validation remonte.** Signal universel, valable pour les quatre familles : si la perte de
-   validation est repartie à la hausse depuis son minimum de plus de `--seuil-val` pour cent, le
-   modèle a commencé à mémoriser. C'est ce qui a été observé au premier run (incident J6 :
-   minimum 0,000803 au pas 14 000, puis 0,001195 à la fin, soit +49 %).
+1. **La validation remonte en tendance.** Signal universel, valable pour les quatre familles : si la
+   pente de log(validation) sur la **seconde moitié** de l'entraînement est positive avec un t
+   supérieur à `--seuil-t`, le modèle a commencé à mémoriser. C'est ce qui a été observé au premier
+   run (incident J6 : pente +0,21 par 10 000 pas, t = +10,7 ; validation passée de 0,000803 au pas
+   14 000 à 0,001195 à la fin).
+
+   La règle a d'abord comparé le **dernier** point au minimum. Elle produisait des fausses alertes sur
+   la diffusion, dont la validation fluctue fortement d'un relevé à l'autre même à bruit fixe, les
+   poids changeant entre deux relevés : au run `core-diffusion-p0.30-s0`, +30 % sur le dernier point
+   alors que la tendance de fond descendait encore (pente −0,40, t = −3,9). Voir `docs/JOURNAL.md`,
+   J9. L'écart au minimum reste affiché, comme information.
 
 2. **La perte d'entraînement passe sous le plancher de Bayes.** Vérification plus forte, mais qui
    n'a de sens que pour les familles `regression` et `oracle`, dont la perte est une MSE : aux
@@ -55,6 +62,32 @@ def lire_log(path: Path) -> tuple[dict, dict]:
     return {k: derniers(v) for k, v in train.items()}, {k: derniers(v) for k, v in val.items()}
 
 
+def pente_log(pts: list[tuple[int, float]]) -> tuple[float | None, float]:
+    """Pente de log(validation) sur la **seconde moitié** de l'entraînement, par 10 000 pas, et son t.
+
+    Pourquoi la pente et non le dernier point : la validation de la diffusion fluctue fortement d'un
+    relevé à l'autre, même à bruit fixe, parce que les poids changent entre deux relevés. Comparer le
+    dernier point au minimum y produit des fausses alertes (incident J9 : +30 % sur un run dont la
+    validation descendait encore). La tendance de fond, elle, sépare nettement les deux cas : pente
+    de +0,21 par 10 000 pas pour le run mémorisant de J6, de −0,34 à −0,40 pour les diffusions saines.
+    """
+    pts = [(x, v) for x, v in pts if v > 0]
+    if len(pts) < 6:
+        return None, 0.0
+    moitie = pts[len(pts) // 2:]
+    x = np.array([p for p, _ in moitie], dtype=float) / 10_000.0
+    y = np.log(np.array([v for _, v in moitie], dtype=float))
+    if len(x) < 4 or np.ptp(x) == 0:
+        return None, 0.0
+    b, a = np.polyfit(x, y, 1)
+    resid = y - (a + b * x)
+    s2 = float((resid ** 2).sum()) / (len(x) - 2)
+    denom = float(((x - x.mean()) ** 2).sum())
+    if s2 <= 0 or denom <= 0:
+        return float(b), 0.0
+    return float(b), float(b / np.sqrt(s2 / denom))
+
+
 def plancher_bayes(data_root: Path, p: float, n_echantillon: int = 2000, seed: int = 0) -> float | None:
     """Plancher de Bayes de la MSE d'entraînement, dans les unités de `mse_loss` (moyenne par
     élément, échelle -1..1). None si les données d'entraînement sont absentes."""
@@ -62,7 +95,10 @@ def plancher_bayes(data_root: Path, p: float, n_echantillon: int = 2000, seed: i
     from flou.game import State, branch_delta, render_counterfactual
     from flou.train.runs import train_files
 
-    fichiers = train_files(data_root, p)
+    try:
+        fichiers = train_files(data_root, p)
+    except FileNotFoundError:                 # journaux analysés sans les données sous la main
+        return None
     if not fichiers:
         return None
     td = TransitionData([str(f) for f in fichiers])
@@ -109,7 +145,7 @@ def figure(run_id: str, train: dict, val: dict, plancher: float | None, out: Pat
     plt.close(fig)
 
 
-def examiner(d: Path, data_root: Path, seuil_val: float, faire_fig: bool) -> list[str]:
+def examiner(d: Path, data_root: Path, seuil_val: float, seuil_t: float, faire_fig: bool) -> list[str]:
     """Renvoie la liste des alertes (vide si tout va bien)."""
     from flou.train.runs import RunSpec
 
@@ -137,12 +173,18 @@ def examiner(d: Path, data_root: Path, seuil_val: float, faire_fig: bool) -> lis
         y = [v for _, v in pv]
         i_min = int(np.argmin(y))
         hausse = (y[-1] - y[i_min]) / y[i_min] if y[i_min] > 0 else 0.0
-        etat = "ALERTE" if hausse > seuil_val else "ok"
+        b, t = pente_log(pv)
+        monte = b is not None and b > 0 and t > seuil_t
+        etat = "ALERTE" if monte else ("tendance ok" if hausse > seuil_val else "ok")
+        pente_txt = "pente indisponible" if b is None else f"pente {b:+.3f}/10k pas, t {t:+.1f}"
         print(f"   {stade}/{cle} : minimum {y[i_min]:.6f} au pas {pv[i_min][0]}, "
-              f"fin {y[-1]:.6f} ({hausse:+.1%})  [{etat}]")
-        if hausse > seuil_val:
-            alertes.append(f"{cle} remontée de {hausse:+.1%} depuis son minimum (pas {pv[i_min][0]}) : "
-                           f"surapprentissage au stade « {stade} »")
+              f"fin {y[-1]:.6f} ({hausse:+.1%})  |  {pente_txt}  [{etat}]")
+        if monte:
+            alertes.append(f"{cle} en hausse sur la seconde moitié de l'entraînement "
+                           f"(pente {b:+.3f} par 10 000 pas, t = {t:+.1f}) : surapprentissage au stade « {stade} »")
+        elif hausse > seuil_val:
+            print(f"      information : la validation finit {hausse:+.1%} au-dessus de son minimum, mais la tendance "
+                  f"de fond ne monte pas. Point isolé, pas une alerte (voir docs/JOURNAL.md, J9).")
 
     if faire_fig:
         out = d / "fig_training.png"
@@ -159,7 +201,9 @@ def main() -> None:
     ap.add_argument("--runs", type=Path, default=Path("runs"))
     ap.add_argument("--data", type=Path, default=Path("data"))
     ap.add_argument("--seuil-val", type=float, default=0.10,
-                    help="hausse relative de la perte de validation qui déclenche l'alerte")
+                    help="hausse relative depuis le minimum au-delà de laquelle on le signale (information)")
+    ap.add_argument("--seuil-t", type=float, default=3.0,
+                    help="t minimal d'une pente de log(validation) positive pour déclencher l'alerte")
     ap.add_argument("--no-fig", action="store_true", help="n'écrit aucune figure")
     args = ap.parse_args()
 
@@ -173,7 +217,7 @@ def main() -> None:
     total = []
     for d in dossiers:
         print(f"== {d.name}")
-        for a in examiner(d, args.data, args.seuil_val, not args.no_fig):
+        for a in examiner(d, args.data, args.seuil_val, args.seuil_t, not args.no_fig):
             total.append((d.name, a))
 
     print()

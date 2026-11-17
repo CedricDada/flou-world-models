@@ -19,9 +19,11 @@ class TorchPredictor:
     """
 
     def __init__(self, model, device: str = "cuda", name: str = "modele", n_steps: int | None = None,
-                 tau: float = 1.0, oracle: bool = False, amp: bool = True, max_batch: int = 512):
+                 tau: float = 1.0, oracle: bool = False, amp: bool = True, max_batch: int = 512,
+                 sigma_max: float | None = None):
         self.model, self.device, self.name = model.eval(), device, name
         self.n_steps, self.tau, self.oracle = n_steps, tau, oracle
+        self.sigma_max = sigma_max                  # diffusion seulement : balayage de σ (J9)
         self.amp = amp and torch.device(device).type == "cuda"
         self.max_batch = max_batch
 
@@ -55,6 +57,8 @@ class TorchPredictor:
             kw["n_steps"] = self.n_steps
         if self.model.__class__.__name__ == "TokenWorldModel":
             kw["tau"] = self.tau
+        if self.sigma_max is not None:
+            kw["sigma_max"] = self.sigma_max
         with torch.autocast(device_type=torch.device(dev).type, dtype=torch.float16, enabled=self.amp):
             y = self.model.predict(ctx, act, generator=gen, branch=branch, **kw)
         return ((y.float() + 1.0) / 2.0).clamp(0.0, 1.0).permute(0, 2, 3, 1).cpu().numpy()

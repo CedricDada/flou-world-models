@@ -3,6 +3,8 @@
 Pour chaque variante (clé `n=3`, `tau=1`, `main`...) :
     {clé}__alpha, __rho, __label, __recall, __state   un élément par image prédite : permettent de re-seuiller ρmax
                                                       et de refaire les tables sans réévaluer le modèle ;
+    {clé}__alpha_rail, __rho_rail, __label_rail       les mêmes, restreints au rail de la bifurcation (mesure
+                                                      EXPLORATOIRE déclarée après J9 ; absents des runs simulés) ;
     {clé}__img_idx, {clé}__img                        au plus `per_class` images PAR CLASSE AUTOMATIQUE (tirage
                                                       uniforme dans la classe) : réservoir de la relecture manuelle ;
     {clé}__ab_img                                     les `n_ab` premiers états, premier tirage : mêmes contextes pour
@@ -23,7 +25,9 @@ def _to_u8(x: np.ndarray) -> np.ndarray:
 def pack_arrays(res: dict, key: str, per_class: int = 25, n_ab: int = 40, seed: int = 0,
                 n_classes: int = 4) -> dict[str, np.ndarray]:
     ps = res["per_sample"]
-    out = {f"{key}__{k}": np.asarray(ps[k]) for k in ("alpha", "rho", "label", "recall", "state")}
+    cles = ("alpha", "rho", "label", "recall", "state",
+            "label_rail", "alpha_rail", "rho_rail")      # mesure exploratoire J9, absente des runs simulés
+    out = {f"{key}__{k}": np.asarray(ps[k]) for k in cles if k in ps}
     imgs = res.get("images")
     if imgs is None:
         return out

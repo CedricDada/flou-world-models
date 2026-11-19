@@ -17,11 +17,13 @@ a-t-il mémorisé son jeu d'entraînement ?** Deux symptômes sont cherchés.
    J9. L'écart au minimum reste affiché, comme information.
 
 2. **La perte d'entraînement passe sous le plancher de Bayes.** Vérification plus forte, mais qui
-   n'a de sens que pour les familles `regression` et `oracle`, dont la perte est une MSE : aux
-   états de bifurcation, l'erreur quadratique minimale d'un modèle qui ignore la branche vaut
-   p(1-p)δ². Passer dessous est mathématiquement impossible sans connaître l'issue. Les pertes de
-   la diffusion (débruitage) et des jetons (entropie croisée) n'ont pas de plancher comparable :
-   pour elles, seul le symptôme 1 s'applique. Le plancher est estimé sur les données
+   n'a de sens que pour la famille `regression` : aux états de bifurcation, l'erreur quadratique
+   minimale d'un modèle qui **ignore** la branche vaut p(1-p)δ². Passer dessous est mathématiquement
+   impossible sans connaître l'issue. L'**oracle**, lui, reçoit la branche en entrée : descendre
+   sous ce plancher est exactement son rôle, pas un symptôme (fausse alerte de la session 3, J11 :
+   0,22 fois le plancher, validation plate, 98,8 % d'images nettes). Les pertes de la diffusion
+   (débruitage) et des jetons (entropie croisée) n'ont pas de plancher comparable : pour elles,
+   comme pour l'oracle, seul le symptôme 1 s'applique. Le plancher est estimé sur les données
    d'entraînement elles-mêmes, pas sur une valeur codée en dur.
 
 Écrit une figure par run (`runs/<run>/fig_training.png`) et renvoie un **code de sortie non nul**
@@ -86,6 +88,21 @@ def pente_log(pts: list[tuple[int, float]]) -> tuple[float | None, float]:
     if s2 <= 0 or denom <= 0:
         return float(b), 0.0
     return float(b), float(b / np.sqrt(s2 / denom))
+
+
+FAMILLES_PLANCHER = ("regression",)     # seules familles qui IGNORENT la branche et dont la perte est une MSE
+
+
+def alerte_plancher(famille: str, pts: list[tuple[int, float]], plancher: float | None) -> str | None:
+    """Texte de l'alerte si la perte d'entraînement finale (moyenne des 10 derniers relevés) passe sous
+    le plancher de Bayes, None sinon. Toujours None hors de FAMILLES_PLANCHER (l'oracle connaît la branche)."""
+    if famille not in FAMILLES_PLANCHER or not plancher or len(pts) < 10:
+        return None
+    fin = float(np.mean([v for _, v in pts[-10:]]))
+    if fin >= plancher:
+        return None
+    return (f"perte d'entraînement finale {fin:.6f} SOUS le plancher de Bayes "
+            f"{plancher:.6f} ({fin / plancher:.2f} x) : le modèle a mémorisé la branche")
 
 
 def plancher_bayes(data_root: Path, p: float, n_echantillon: int = 2000, seed: int = 0) -> float | None:
@@ -158,14 +175,11 @@ def examiner(d: Path, data_root: Path, seuil_val: float, seuil_t: float, faire_f
     alertes = []
 
     plancher = None
-    if spec.family in ("regression", "oracle"):
+    if spec.family in FAMILLES_PLANCHER:
         plancher = plancher_bayes(data_root, spec.p)
-        pts = train.get("main", [])
-        if plancher and len(pts) >= 10:
-            fin = float(np.mean([v for _, v in pts[-10:]]))
-            if fin < plancher:
-                alertes.append(f"perte d'entraînement finale {fin:.6f} SOUS le plancher de Bayes "
-                               f"{plancher:.6f} ({fin / plancher:.2f} x) : le modèle a mémorisé la branche")
+        alerte = alerte_plancher(spec.family, train.get("main", []), plancher)
+        if alerte:
+            alertes.append(alerte)
 
     for (stade, cle), pv in sorted(val.items()):
         if len(pv) < 3:

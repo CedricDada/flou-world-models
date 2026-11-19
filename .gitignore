@@ -23,3 +23,7 @@ runs_dryrun/
 
 # Copie locale de l'état Kaggle (téléchargement) : le Dataset flou-wm-etat fait foi.
 flou_etat/
+
+# Résultats d'une session Kaggle, transmis pour lecture : ils vivent sur Kaggle, jamais dans le dépôt.
+log.txt
+notebooks/flou_kaggle-result.ipynb

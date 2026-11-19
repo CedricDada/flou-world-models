@@ -18,6 +18,93 @@ Les décisions de protocole, elles, vivent dans [`DECISIONS.md`](DECISIONS.md) :
 
 ---
 
+## J11 — Troisième session Kaggle : 10 runs sur 12, une fausse alerte de mon fait, et le balayage de σ
+
+**18 novembre 2026.** Session `STAGE = 'core_control'`, 10,3 h, premier lancement des pièces de J9 et J10 sur GPU. Tout a
+tourné sans erreur : garde-fou passé (5 runs évalués dans l'état repris, 5 attendus), bloc 6bis en **16 minutes mesurées**
+(réévaluation des 5 anciens runs, référence exacte, balayage de σ), puis l'entraînement jusqu'au budget de 10 h. Sauvegarde OK
+(`etat.zip`, 493 Mo). **10 runs sur 12 sont évalués.** `control-regression-p0.00-s0` s'est arrêté proprement au budget et
+reprendra ; `control-diffusion-p0.00-s0` reste à faire (environ 5 h pour les deux).
+
+Durées d'entraînement : jetons s1 1,04 h (dont 0,87 h en session 2), régression s2 2,35 h, diffusion s2 2,37 h, jetons s2
+0,84 h, oracle 2,33 h — un peu plus rapides qu'en session 2 (2,6 h pour la régression et la diffusion).
+
+### Résultats nouveaux (p = 0,3, ρmax = 0,1599, 2 000 états de test)
+
+| Run | floue | autre | nettes | p̂ [IC 95 %] | au rail : floue / autre / nettes |
+|---|---|---|---|---|---|
+| régression s2 | 97,9 % | 1,5 % | 0,7 % | — | 99,2 / 0,1 / 0,7 % ; H0b réussi (1,013, fuite z = 0,5) |
+| diffusion s2, n = 1 | 0 % | 100 % | 0 % | — | 46,0 / 3,7 / 50,3 % |
+| diffusion s2, n = 3 | 3,7 % | 4,7 % | 91,6 % | 0,358 [0,336 ; 0,380] | 3,8 / 1,2 / 95,0 % |
+| diffusion s2, n = 20 | 0 % | 3,5 % | 96,5 % | 0,332 [0,311 ; 0,353] | 0 / 0,7 / 99,4 % |
+| jetons s1, τ = 1 | 0 % | 68,7 % | 31,3 % | 0,260 [0,226 ; 0,297] | 0 / 19,1 / 80,9 % |
+| jetons s2, τ = 1 | 0 % | 39,1 % | 61,0 % | 0,313 [0,287 ; 0,340] | 0 / 12,1 / 87,9 % |
+| oracle | 0 % | 1,2 % | 98,8 % | 0,287 [0,267 ; 0,307] | 0 / 0 / 100 % |
+
+**La réévaluation est déterministe.** Les cinq runs réévalués pour porter la clé `rail` redonnent les chiffres de J9 à la
+décimale près (p̂ 0,327 et 0,255 à n = 3, rapports MSE inchangés).
+
+**Aperçu, pas un verdict** (c'est `analyze.py` qui tranche) : H2a sera réfutée, comme annoncé en J9 — 0 % de flou à n = 1 sur
+les trois graines. H2b ne sera vraisemblablement pas confirmée : à n = 3, la graine s2 donne p̂ = 0,358, à 0,058 de p, au-delà
+des 0,05 exigés pour chaque graine (s0 : 0,027 ; s1 : 0,045).
+
+**La mesure au rail sépare bien les deux défauts.** Les « autre » des jetons tombent de 52 / 69 / 39 % à 16 / 19 / 12 % au
+rail : l'essentiel venait de l'agent décalé, pas de la bifurcation. La diffusion à n = 1, 100 % « autre » sur l'image
+entière, est au rail à moitié floue, à moitié nette (46 à 53 % de flou), sur les trois graines. Les régressions ne bougent
+presque pas. Réserve de J10 toujours valable : au rail, ρmax n'est pas recalibré, ces « autre » sont un minorant.
+
+### 1. L'alerte « oracle sous le plancher de Bayes » est fausse, et l'erreur est dans le script
+
+`training_curves.py` a levé : « control-oracle-p0.30-s0 : perte d'entraînement finale 0,000146 SOUS le plancher de Bayes
+0,000662 (0,22 x) : le modèle a mémorisé la branche ». Le plancher p(1−p)δ² ne borne qu'un modèle qui **ignore** la branche.
+L'oracle la reçoit en entrée (`RegressionModel(oracle=True)`) : passer dessous est exactement son rôle. Tout le reste est sain
+— validation plate (+0,8 %, pente −0,008, t = −0,9), 98,8 % d'images nettes, p̂ = 0,287.
+
+**Cause.** La vérification portait sur `("regression", "oracle")`, au motif que les deux familles ont une perte MSE. C'est la
+connaissance de la branche qui compte, pas la forme de la perte : l'erreur a été introduite à l'écriture du script (J7), et n'a
+pu se voir qu'au premier run d'oracle.
+
+**Solution appliquée.** Le plancher n'est vérifié que pour la régression (`FAMILLES_PLANCHER`), la logique est isolée dans
+`alerte_plancher()`, et un test reproduit le cas mesuré : l'oracle à 0,22 fois le plancher ne lève rien, la régression dans la
+même situation lève toujours. La règle de pente, elle, n'a rien signalé à tort sur les 11 runs : la diffusion s2 finit 36 %
+au-dessus de son minimum, mais sa tendance descend (pente −0,68, t = −5,6) — affiché comme information, comme prévu par J9.
+
+### 2. Le balayage de σ : le réseau suit le débruiteur exact là où σ est couvert, et seulement là
+
+Lecture fixée avant la mesure (DECISIONS.md, complément du 17 novembre). Un pas d'Euler depuis chaque σ, 2 000 états :
+
+| σ | floue s0 / s1 | référence exacte | « autre » s0 / s1 | ρ médian | α̂ p5 – p95 (s0) | référence α̂ | exemples vus (σ ≥) |
+|---|---|---|---|---|---|---|---|
+| 1 | 0 / 0 % | 7,6 % | 100 / 100 % | 1,29 / 1,34 | 0,11 – 0,68 | 0,00 – 1,00 | — |
+| 2 | 0 / 0 % | 14,1 % | 100 / 100 % | 0,48 / 0,53 | 0,00 – 0,97 | 0,00 – 1,00 | — |
+| 5 | 34,8 / 46,2 % | 34,0 % | 8,2 / 7,3 % | 0,09 | 0,01 – 0,97 | 0,00 – 0,98 | 21 400 |
+| 10 | 53,3 / 56,8 % | 56,1 % | 7,0 / 6,5 % | 0,09 | 0,05 – 0,80 | 0,03 – 0,85 | 3 913 |
+| 20 | 0 / 0 % | 75,8 % | 100 / 100 % | 0,21 | 0,11 – 0,65 | 0,11 – 0,60 | 525 |
+| 40 | 0 / 0 % | 91,9 % | 100 / 100 % | 0,33 / 0,38 | 0,05 – 0,78 | 0,19 – 0,44 | 51 |
+| 80 | 0 / 0 % | 99,7 % | 100 / 100 % | 0,39 / 0,41 | 0,03 – 0,86 | 0,24 – 0,37 | 4 |
+
+(Lignes 30 et 60 omises : elles s'intercalent sans surprise. Référence calculée sur 300 états dans la session.)
+
+**Lecture, exploratoire.** Trois régimes, chacun annoncé à l'avance :
+- **σ = 5 à 10, densément couverts** : le réseau reproduit le débruiteur exact — même part de flou à quelques points près,
+  même dispersion de α̂, ρ médian 0,09 (sous ρmax). L'échantillonneur à un pas *fonctionne* là.
+- **σ ≥ 20, où la couverture s'effondre** : 100 % « autre », ρ médian qui croît avec σ (0,21 → 0,41), et une dispersion de α̂
+  qui **s'élargit** quand celle de la référence se resserre. C'est l'hypothèse de J9 : à σmax = 80, vu 4 fois, la sortie n'est
+  pas la moyenne conditionnelle.
+- **σ ≤ 2** : 100 % « autre » aussi, mais pour la raison anticipée en J10 — le point de départ x = σ·n est loin de la loi
+  d'entraînement (85 écarts-types à σ = 1). Ces lignes ne disent rien de la couverture.
+
+Le partage moitié floue, moitié nette de n = 1 au rail (section précédente) est aussi ce que le débruiteur exact donne à
+σ ≈ 10 (56 % de flou). C'était l'observation de l'agent en J10, sur 25 images ; elle tient sur 2 000 états et trois graines.
+Rien de tout cela ne change H2a : le verdict reste celui de la règle préenregistrée, et ce balayage en donne la raison.
+
+**Statut : résolu pour l'alerte (corrigée, testée), en cours pour la campagne.** La session 4 finit les deux contrôles p = 0
+et lance l'analyse (`MIN_EVALUATED = 10`, `RUN_ANALYSIS = True`) ; le balayage, idempotent, ne traitera plus que
+`core-diffusion-p0.30-s2`. Pièces : le journal de la session et le notebook exécuté restent sur Kaggle, ainsi que l'état
+dans le Dataset `flou-wm-etat` ; ils ne sont pas versionnés ici.
+
+---
+
 ## J10 — Relecture du commit 61dfcc6 avant la session 3 : un garde-fou troué, une prédiction fausse
 
 **17 novembre 2026.** Le même agent externe a relu le commit `61dfcc6` (règle de pente, mesure au rail, balayage de σ) avant

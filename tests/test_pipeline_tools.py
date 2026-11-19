@@ -422,3 +422,13 @@ def test_slope_rule_ignores_a_single_noisy_last_point():
 def test_slope_rule_stays_silent_when_there_are_too_few_points():
     tc = _training_curves()
     assert tc.pente_log([(1000, 0.1), (2000, 0.2), (3000, 0.4)]) == (None, 0.0)
+
+
+def test_bayes_floor_alert_spares_the_oracle():
+    """Session 3 (J11) : l'oracle reçoit la branche, descendre sous le plancher est son rôle."""
+    tc = _training_curves()
+    pts = [(100 * (i + 1), 0.000146) for i in range(20)]           # 0,22 fois le plancher, comme mesuré
+    assert tc.alerte_plancher("oracle", pts, 0.000662) is None
+    assert "SOUS le plancher" in tc.alerte_plancher("regression", pts, 0.000662)   # J6 reste détecté
+    assert tc.alerte_plancher("regression", [(100, 0.001)] * 20, 0.000662) is None
+
